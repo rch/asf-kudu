@@ -353,9 +353,10 @@ DEFINE_uint32(table_locations_cache_capacity_mb, 0,
               "of 0 means table locations are not be cached");
 TAG_FLAG(table_locations_cache_capacity_mb, advanced);
 
-DEFINE_bool(enable_per_range_hash_schemas, false,
-            "Whether the ability to specify different hash schemas per range is enabled");
-TAG_FLAG(enable_per_range_hash_schemas, unsafe);
+DEFINE_bool(enable_per_range_hash_schemas, true,
+            "Whether to support range-specific hash schemas for tables");
+TAG_FLAG(enable_per_range_hash_schemas, advanced);
+TAG_FLAG(enable_per_range_hash_schemas, runtime);
 
 DEFINE_bool(enable_table_write_limit, false,
             "Enable the table write limit. "
@@ -2676,20 +2677,23 @@ Status CatalogManager::ApplyAlterPartitioningSteps(
     vector<Partition> partitions;
     const pair<KuduPartialRow, KuduPartialRow> range_bound =
         { *ops[0].split_row, *ops[1].split_row };
-    if (!FLAGS_enable_per_range_hash_schemas) {
-      RETURN_NOT_OK(partition_schema.CreatePartitions(
-          {}, { range_bound }, schema, &partitions));
-    } else {
-      const Schema schema = client_schema.CopyWithColumnIds();
-      if (step.type() == AlterTableRequestPB::ADD_RANGE_PARTITION &&
-          step.add_range_partition().custom_hash_schema_size() > 0) {
+    if (step.type() == AlterTableRequestPB::ADD_RANGE_PARTITION) {
+      if (!FLAGS_enable_per_range_hash_schemas ||
+          !step.add_range_partition().has_custom_hash_schema()) {
+        RETURN_NOT_OK(partition_schema.CreatePartitions(
+            {}, { range_bound }, schema, &partitions));
+      } else {
+        const auto& custom_hash_schema_pb =
+            step.add_range_partition().custom_hash_schema().hash_schema();
+        const Schema schema = client_schema.CopyWithColumnIds();
         PartitionSchema::HashSchema hash_schema;
         RETURN_NOT_OK(PartitionSchema::ExtractHashSchemaFromPB(
-            schema, step.add_range_partition().custom_hash_schema(), &hash_schema));
+            schema, custom_hash_schema_pb, &hash_schema));
         if (partition_schema.hash_schema().size() != hash_schema.size()) {
           return Status::NotSupported(
               "varying number of hash dimensions per range is not yet supported");
         }
+        RETURN_NOT_OK(PartitionSchema::ValidateHashSchema(schema, hash_schema));
         RETURN_NOT_OK(partition_schema.CreatePartitionsForRange(
             range_bound, hash_schema, schema, &partitions));
 
@@ -2704,13 +2708,20 @@ Status CatalogManager::ApplyAlterPartitioningSteps(
           auto* hash_dimension_pb = range->add_hash_schema();
           hash_dimension_pb->set_num_buckets(hash_dimension.num_buckets);
           hash_dimension_pb->set_seed(hash_dimension.seed);
-          auto* columns = hash_dimension_pb->add_columns();
           for (const auto& column_id : hash_dimension.column_ids) {
-            columns->set_id(column_id);
+            hash_dimension_pb->add_columns()->set_id(column_id);
           }
         }
         ++partition_schema_updates;
-      } else if (step.type() == AlterTableRequestPB::DROP_RANGE_PARTITION) {
+      }
+    } else {
+      DCHECK_EQ(AlterTableRequestPB::DROP_RANGE_PARTITION, step.type());
+      if (!FLAGS_enable_per_range_hash_schemas ||
+          !partition_schema.HasCustomHashSchemas()) {
+        RETURN_NOT_OK(partition_schema.CreatePartitions(
+            {}, { range_bound }, schema, &partitions));
+      } else {
+        const Schema schema = client_schema.CopyWithColumnIds();
         PartitionSchema::HashSchema range_hash_schema;
         RETURN_NOT_OK(partition_schema.GetHashSchemaForRange(
             range_bound.first, schema, &range_hash_schema));

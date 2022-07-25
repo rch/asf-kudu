@@ -57,7 +57,7 @@ class KuduTableAlterer::Data {
 
     // The Kudu range partition to add or drop. Only set when the StepType is
     // [ADD|DROP]_RANGE_PARTITION.
-    std::unique_ptr<KuduTableCreator::KuduRangePartition> range_partition;
+    std::unique_ptr<KuduRangePartition> range_partition;
 
     // The dimension label for tablet. Only set when the StepType is ADD_RANGE_PARTITION.
     std::optional<std::string> dimension_label;
@@ -80,6 +80,9 @@ class KuduTableAlterer::Data {
 
   // Set to true if there are alter partition steps.
   bool has_alter_partitioning_steps = false;
+
+  // Set to true if a new range with custom hash schema is being added.
+  bool adding_range_with_custom_hash_schema = false;
 
   // Schema of add/drop range partition bound rows.
   const Schema* schema_;

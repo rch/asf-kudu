@@ -1220,68 +1220,6 @@ class KUDU_EXPORT KuduTableCreator {
     INCLUSIVE_BOUND, ///< An inclusive bound.
   };
 
-  /// A helper class to represent a Kudu range partition with a custom hash
-  /// bucket schema. The hash sub-partitioning for a range partition might be
-  /// different from the default table-wide hash bucket schema specified during
-  /// the creation of a table (see KuduTableCreator::add_hash_partitions()).
-  /// Correspondingly, this class provides a means to specify a custom hash
-  /// bucket structure for the data in a range partition.
-  class KuduRangePartition {
-   public:
-    /// Create an object representing the range defined by the given parameters.
-    ///
-    /// @param [in] lower_bound
-    ///   The lower bound for the range.
-    ///   The KuduRangePartition object takes ownership of the parameter.
-    /// @param [in] upper_bound
-    ///   The upper bound for the range.
-    ///   The KuduRangePartition object takes ownership of the parameter.
-    /// @param [in] lower_bound_type
-    ///   The type of the lower_bound: inclusive or exclusive; inclusive if the
-    ///   parameter is omitted.
-    /// @param [in] upper_bound_type
-    ///   The type of the upper_bound: inclusive or exclusive; exclusive if the
-    ///   parameter is omitted.
-    KuduRangePartition(KuduPartialRow* lower_bound,
-                       KuduPartialRow* upper_bound,
-                       RangePartitionBound lower_bound_type = INCLUSIVE_BOUND,
-                       RangePartitionBound upper_bound_type = EXCLUSIVE_BOUND);
-
-    ~KuduRangePartition();
-
-    /// Add a level of hash sub-partitioning for this range partition.
-    ///
-    /// The hash schema for the range partition is defined by the whole set of
-    /// its hash sub-partitioning levels. A range partition can have multiple
-    /// levels of hash sub-partitioning: this method can be called multiple
-    /// times to define a multi-dimensional hash bucketing structure for the
-    /// range. Alternatively, a range partition can have zero levels of hash
-    /// sub-partitioning: simply don't call this method on a newly created
-    /// @c KuduRangePartition object to have no hash sub-partitioning for the
-    /// range represented by the object.
-    ///
-    /// @param [in] columns
-    ///   Names of columns to use for partitioning.
-    /// @param [in] num_buckets
-    ///   Number of buckets for the hashing.
-    /// @param [in] seed
-    ///   Hash seed for mapping rows to hash buckets.
-    /// @return Operation result status.
-    Status add_hash_partitions(const std::vector<std::string>& columns,
-                               int32_t num_buckets,
-                               int32_t seed = 0);
-   private:
-    class KUDU_NO_EXPORT Data;
-
-    friend class KuduTableCreator;
-    friend class KuduTableAlterer;
-
-    // Owned.
-    Data* data_;
-
-    DISALLOW_COPY_AND_ASSIGN(KuduRangePartition);
-  };
-
   /// Add a range partition with table-wide hash bucket schema.
   ///
   /// Multiple range partitions may be added, but they must not overlap. All
@@ -1315,7 +1253,7 @@ class KUDU_EXPORT KuduTableCreator {
                                         RangePartitionBound lower_bound_type = INCLUSIVE_BOUND,
                                         RangePartitionBound upper_bound_type = EXCLUSIVE_BOUND);
 
-  /// Add a range partition with a custom hash bucket schema.
+  /// Add a range partition with a custom hash schema.
   ///
   /// This method allows adding a range partition which has hash partitioning
   /// schema different from the table-wide one.
@@ -1326,14 +1264,12 @@ class KUDU_EXPORT KuduTableCreator {
   /// @li To create a range with the table-wide hash schema, use
   ///   @c KuduTableCreator::add_range_partition() instead.
   ///
-  /// @warning This functionality isn't fully implemented yet.
-  ///
   /// @param [in] partition
-  ///   Range partition with custom hash bucket schema.
-  ///   The KuduTableCreator object takes ownership of the parameter.
+  ///   Range partition with range-specific hash schema.
+  ///   The KuduTableCreator object takes ownership of the partition object.
   /// @return Reference to the modified table creator.
   KuduTableCreator& add_custom_range_partition(
-      KuduRangePartition* partition);
+      class KuduRangePartition* partition);
 
   /// Add a range partition split at the provided row.
   ///
@@ -1449,6 +1385,70 @@ class KUDU_EXPORT KuduTableCreator {
   Data* data_;
 
   DISALLOW_COPY_AND_ASSIGN(KuduTableCreator);
+};
+
+/// A helper class to represent a Kudu range partition with a custom hash
+/// bucket schema. The hash sub-partitioning for a range partition might be
+/// different from the default table-wide hash bucket schema specified during
+/// the creation of a table (see KuduTableCreator::add_hash_partitions()).
+/// Correspondingly, this class provides a means to specify a custom hash
+/// bucket structure for the data in a range partition.
+class KUDU_EXPORT KuduRangePartition {
+ public:
+  /// Create an object representing the range defined by the given parameters.
+  ///
+  /// @param [in] lower_bound
+  ///   The lower bound for the range.
+  ///   The KuduRangePartition object takes ownership of the parameter.
+  /// @param [in] upper_bound
+  ///   The upper bound for the range.
+  ///   The KuduRangePartition object takes ownership of the parameter.
+  /// @param [in] lower_bound_type
+  ///   The type of the lower_bound: inclusive or exclusive; inclusive if the
+  ///   parameter is omitted.
+  /// @param [in] upper_bound_type
+  ///   The type of the upper_bound: inclusive or exclusive; exclusive if the
+  ///   parameter is omitted.
+  KuduRangePartition(KuduPartialRow* lower_bound,
+                     KuduPartialRow* upper_bound,
+                     KuduTableCreator::RangePartitionBound lower_bound_type =
+      KuduTableCreator::INCLUSIVE_BOUND,
+                     KuduTableCreator::RangePartitionBound upper_bound_type =
+      KuduTableCreator::EXCLUSIVE_BOUND);
+
+  ~KuduRangePartition();
+
+  /// Add a level of hash sub-partitioning for this range partition.
+  ///
+  /// The hash schema for the range partition is defined by the whole set of
+  /// its hash sub-partitioning levels. A range partition can have multiple
+  /// levels of hash sub-partitioning: this method can be called multiple
+  /// times to define a multi-dimensional hash bucketing structure for the
+  /// range. Alternatively, a range partition can have zero levels of hash
+  /// sub-partitioning: simply don't call this method on a newly created
+  /// @c KuduRangePartition object to have no hash sub-partitioning for the
+  /// range represented by the object.
+  ///
+  /// @param [in] columns
+  ///   Names of columns to use for partitioning.
+  /// @param [in] num_buckets
+  ///   Number of buckets for the hashing.
+  /// @param [in] seed
+  ///   Hash seed for mapping rows to hash buckets.
+  /// @return Operation result status.
+  Status add_hash_partitions(const std::vector<std::string>& columns,
+                             int32_t num_buckets,
+                             int32_t seed = 0);
+ private:
+  class KUDU_NO_EXPORT Data;
+
+  friend class KuduTableCreator;
+  friend class KuduTableAlterer;
+
+  // Owned.
+  Data* data_;
+
+  DISALLOW_COPY_AND_ASSIGN(KuduRangePartition);
 };
 
 /// @brief In-memory statistics of table.
@@ -1906,11 +1906,9 @@ class KUDU_EXPORT KuduTableAlterer {
   ///   defaults to 5 minutes.
   ///
   /// @param [in] partition
-  ///   The Kudu Range partition to be created. This Kudu Range partition can
-  ///   have a custom hash schema defined.
+  ///   The range partition to be created: it can have a custom hash schema.
   /// @return Raw pointer to this alterer object.
-  KuduTableAlterer* AddRangePartition(
-      KuduTableCreator::KuduRangePartition* partition);
+  KuduTableAlterer* AddRangePartition(KuduRangePartition* partition);
 
   /// Add a range partition to the table with dimension label.
   ///
@@ -3078,6 +3076,7 @@ class KUDU_EXPORT KuduScanner {
   Status NextBatch(internal::ScanBatchDataInterface* batch);
 
   friend class KuduScanToken;
+  friend class FlexPartitioningTest;
   FRIEND_TEST(ClientTest, TestBlockScannerHijackingAttempts);
   FRIEND_TEST(ClientTest, TestScanCloseProxy);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);

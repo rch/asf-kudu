@@ -522,6 +522,7 @@ class ToolTest : public KuduTest {
     string columns;
     TableCopyMode mode;
     int32_t create_table_replication_factor;
+    string create_table_hash_bucket_nums;
   };
 
   void RunCopyTableCheck(const RunCopyTableCheckArgs& args) {
@@ -569,9 +570,11 @@ class ToolTest : public KuduTest {
 
     // Execute copy command.
     string stdout;
-    NO_FATALS(RunActionStdoutString(
+    string stderr;
+    Status s = RunActionStdoutStderrString(
                 Substitute("table copy $0 $1 $2 -dst_table=$3 -predicates=$4 -write_type=$5 "
-                           "-create_table=$6 -create_table_replication_factor=$7",
+                           "-create_table=$6 -create_table_replication_factor=$7 "
+                           "-create_table_hash_bucket_nums=$8",
                            cluster_->master()->bound_rpc_addr().ToString(),
                            args.src_table_name,
                            cluster_->master()->bound_rpc_addr().ToString(),
@@ -579,8 +582,36 @@ class ToolTest : public KuduTest {
                            args.predicates_json,
                            write_type,
                            create_table,
-                           args.create_table_replication_factor),
-                &stdout));
+                           args.create_table_replication_factor,
+                           args.create_table_hash_bucket_nums),
+                &stdout, &stderr);
+    if (args.create_table_hash_bucket_nums == "10,aa") {
+      ASSERT_STR_CONTAINS(stderr, "cannot parse the number of hash buckets.");
+      return;
+    }
+    if (args.create_table_hash_bucket_nums == "10,20,30") {
+      ASSERT_STR_CONTAINS(stderr, "The count of hash bucket numbers must be equal to the "
+                                  "number of hash schema dimensions.");
+      return;
+    }
+    if (args.create_table_hash_bucket_nums == "10") {
+      ASSERT_STR_CONTAINS(stderr, "The count of hash bucket numbers must be equal to the "
+                                  "number of hash schema dimensions.");
+      return;
+    }
+    if (args.create_table_hash_bucket_nums == "10,1") {
+      ASSERT_STR_CONTAINS(stderr, "The number of hash buckets must not be less than 2.");
+      return;
+    }
+    if (args.create_table_hash_bucket_nums == "10,1") {
+      ASSERT_STR_CONTAINS(stderr, "The number of hash buckets must not be less than 2.");
+      return;
+    }
+    if (args.create_table_hash_bucket_nums == "10,50") {
+      ASSERT_STR_CONTAINS(stderr, "There are no hash partitions defined in this table.");
+      return;
+    }
+    ASSERT_TRUE(s.ok());
 
     // Check total count.
     int64_t total = max<int64_t>(args.max_value - args.min_value + 1, 0);
@@ -612,6 +643,32 @@ class ToolTest : public KuduTest {
         // Replication factor is different when explicitly set it to 3 (default 1).
         if (args.create_table_replication_factor == 3 &&
             HasPrefixString(src_schema[i], "REPLICAS ")) continue;
+        vector<string> hash_bucket_nums = Split(args.create_table_hash_bucket_nums,
+                                            ",", strings::SkipEmpty());
+        if (args.create_table_hash_bucket_nums == "10,20" &&
+            HasPrefixString(src_schema[i], "HASH (key_hash0)")) {
+          ASSERT_STR_CONTAINS(dst_schema[i], Substitute("PARTITIONS $0",
+                                                        hash_bucket_nums[0]));
+          continue;
+        }
+        if (args.create_table_hash_bucket_nums == "10,20" &&
+            HasPrefixString(src_schema[i], "HASH (key_hash1, key_hash2)")) {
+          ASSERT_STR_CONTAINS(dst_schema[i], Substitute("PARTITIONS $0",
+                                                        hash_bucket_nums[1]));
+          continue;
+        }
+        if (args.create_table_hash_bucket_nums == "10,2" &&
+            HasPrefixString(src_schema[i], "HASH (key_hash0)")) {
+          ASSERT_STR_CONTAINS(dst_schema[i], Substitute("PARTITIONS $0",
+                                                        hash_bucket_nums[0]));
+          continue;
+        }
+        if (args.create_table_hash_bucket_nums == "10,2" &&
+            HasPrefixString(src_schema[i], "HASH (key_hash1, key_hash2)")) {
+          ASSERT_STR_CONTAINS(dst_schema[i], Substitute("PARTITIONS $0",
+                                                        hash_bucket_nums[1]));
+          continue;
+        }
         ASSERT_EQ(src_schema[i], dst_schema[i]);
       }
     }
@@ -804,13 +861,57 @@ class ToolTestCopyTableParameterized :
         }
         return multi_args;
       }
-      case kTestCopyTableComplexSchema:
+      case kTestCopyTableComplexSchema: {
         args.columns = kComplexSchemaColumns;
         args.mode = TableCopyMode::INSERT_TO_NOT_EXIST_TABLE;
-        return { args };
-      case kTestCopyUnpartitionedTable:
+        vector<RunCopyTableCheckArgs> multi_args;
+        {
+          auto args_temp = args;
+          args.create_table_hash_bucket_nums = "10,20";
+          multi_args.emplace_back(std::move(args_temp));
+        }
+        {
+          auto args_temp = args;
+          args_temp.create_table_hash_bucket_nums = "10,aa";
+          multi_args.emplace_back(std::move(args_temp));
+        }
+        {
+          auto args_temp = args;
+          args_temp.create_table_hash_bucket_nums = "10,20,30";
+          multi_args.emplace_back(std::move(args_temp));
+        }
+        {
+          auto args_temp = args;
+          args_temp.create_table_hash_bucket_nums = "10";
+          multi_args.emplace_back(std::move(args_temp));
+        }
+        {
+          auto args_temp = args;
+          args_temp.create_table_hash_bucket_nums = "10,1";
+          multi_args.emplace_back(std::move(args_temp));
+        }
+        {
+          auto args_temp = args;
+          args_temp.create_table_hash_bucket_nums = "10,2";
+          multi_args.emplace_back(std::move(args_temp));
+        }
+        {
+          auto args_temp = args;
+          args_temp.create_table_hash_bucket_nums = "";
+          multi_args.emplace_back(std::move(args_temp));
+        }
+        return multi_args;
+      }
+      case kTestCopyUnpartitionedTable: {
         args.mode = TableCopyMode::INSERT_TO_NOT_EXIST_TABLE;
-        return {args};
+        vector<RunCopyTableCheckArgs> multi_args;
+        {
+          auto args_temp = args;
+          args.create_table_hash_bucket_nums = "10,50";
+          multi_args.emplace_back(std::move(args_temp));
+        }
+        return multi_args;
+      }
       case kTestCopyTablePredicates: {
         auto mid = total_rows_ / 2;
         vector<RunCopyTableCheckArgs> multi_args;
@@ -1532,10 +1633,12 @@ TEST_F(ToolTest, TestFsCheck) {
 }
 
 TEST_F(ToolTest, TestFsCheckLiveServer) {
+  string encryption_args = env_->IsEncryptionEnabled() ? GetEncryptionArgs() : "";
   NO_FATALS(StartExternalMiniCluster());
-  string args = Substitute("fs check --fs_wal_dir $0 --fs_data_dirs $1",
+  string args = Substitute("fs check --fs_wal_dir $0 --fs_data_dirs $1 $2",
                            cluster_->GetWalPath("master-0"),
-                           JoinStrings(cluster_->GetDataPaths("master-0"), ","));
+                           JoinStrings(cluster_->GetDataPaths("master-0"), ","),
+                           encryption_args);
   NO_FATALS(RunFsCheck(args, 0, "", {}, 0));
   args += " --repair";
   string stdout;
@@ -1573,6 +1676,29 @@ TEST_F(ToolTest, TestFsFormatWithUuid) {
   ASSERT_OK(generator.Canonicalize(fs.uuid(), &canonicalized_uuid));
   ASSERT_EQ(fs.uuid(), canonicalized_uuid);
   ASSERT_EQ(fs.uuid(), original_uuid);
+}
+
+TEST_F(ToolTest, TestFsFormatWithServerKey) {
+  const string kTestDir = GetTestPath("test");
+  ObjectIdGenerator generator;
+  string original_uuid = generator.Next();
+  string server_key = "00010203040506070809101112131442";
+  string server_key_iv = "42141312111009080706050403020100";
+  string server_key_version = "kuduclusterkey@0";
+  NO_FATALS(RunActionStdoutNone(Substitute(
+      "fs format --fs_wal_dir=$0 --uuid=$1 --server_key=$2 "
+      "--server_key_iv=$3 --server_key_version=$4",
+      kTestDir, original_uuid, server_key, server_key_iv, server_key_version)));
+  FsManager fs(env_, FsManagerOpts(kTestDir));
+  ASSERT_OK(fs.Open());
+
+  string canonicalized_uuid;
+  ASSERT_OK(generator.Canonicalize(fs.uuid(), &canonicalized_uuid));
+  ASSERT_EQ(canonicalized_uuid, fs.uuid());
+  ASSERT_EQ(original_uuid, fs.uuid());
+  ASSERT_EQ(server_key, fs.server_key());
+  ASSERT_EQ(server_key_iv, fs.server_key_iv());
+  ASSERT_EQ(server_key_version, fs.server_key_version());
 }
 
 TEST_F(ToolTest, TestFsDumpUuid) {
@@ -7960,6 +8086,17 @@ TEST_F(UnregisterTServerTest, TestUnregisterTServerNotPresumedDead) {
 }
 
 TEST_F(ToolTest, TestLocalReplicaCopyLocal) {
+  // TODO(abukor): Rewrite the test to make sure it works with encryption
+  // enabled.
+  //
+  // Right now, this test would fail with encryption enabled, as the local
+  // replica copy shares an Env between the source and the destination and they
+  // use different instance files. This shouldn't be a problem in real life, as
+  // its meant to copy tablets between disks on the same server, which would
+  // share UUIDs and server keys.
+  if (FLAGS_encrypt_data_at_rest) {
+    GTEST_SKIP();
+  }
   // Create replicas and fill some data.
   InternalMiniClusterOptions opts;
   opts.num_data_dirs = 3;

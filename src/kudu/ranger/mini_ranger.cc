@@ -52,7 +52,9 @@ namespace kudu {
 namespace ranger {
 
 Status MiniRanger::Start() {
-  RETURN_NOT_OK_PREPEND(mini_pg_.Start(), "Failed to start Postgres");
+  if (!mini_pg_->IsStarted()) {
+    RETURN_NOT_OK_PREPEND(mini_pg_->Start(), "Failed to start Postgres");
+  }
   return StartRanger();
 }
 
@@ -67,10 +69,10 @@ Status MiniRanger::Stop() {
     LOG(INFO) << "Stopped Ranger";
     process_.reset();
   }
-  return mini_pg_.Stop();
+  return mini_pg_->Stop();
 }
 
-Status MiniRanger::InitRanger(string admin_home, bool* fresh_install) {
+Status MiniRanger::InitRanger(const string& admin_home, bool* fresh_install) {
   if (env_->FileExists(admin_home)) {
     *fresh_install = false;
     return Status::OK();
@@ -79,10 +81,10 @@ Status MiniRanger::InitRanger(string admin_home, bool* fresh_install) {
 
   RETURN_NOT_OK(env_->CreateDir(admin_home));
 
-  RETURN_NOT_OK(mini_pg_.AddUser("miniranger", /*super=*/ false));
+  RETURN_NOT_OK(mini_pg_->AddUser("miniranger", /*super=*/ false));
   LOG(INFO) << "Created miniranger Postgres user";
 
-  RETURN_NOT_OK(mini_pg_.CreateDb("ranger", "miniranger"));
+  RETURN_NOT_OK(mini_pg_->CreateDb("ranger", "miniranger"));
   LOG(INFO) << "Created ranger Postgres database";
 
   return Status::OK();
@@ -108,11 +110,11 @@ Status MiniRanger::CreateConfigs() {
 
   // Write config files
   RETURN_NOT_OK(WriteStringToFile(
-      env_, GetRangerInstallProperties(bin_dir(), host_, mini_pg_.bound_port()),
+      env_, GetRangerInstallProperties(bin_dir(), host_, mini_pg_->bound_port()),
       JoinPathSegments(admin_home, "install.properties")));
 
   RETURN_NOT_OK(WriteStringToFile(
-      env_, GetRangerAdminSiteXml(host_, port_, host_, mini_pg_.bound_port(),
+      env_, GetRangerAdminSiteXml(host_, port_, host_, mini_pg_->bound_port(),
                                   admin_ktpath_, lookup_ktpath_,
                                   spnego_ktpath_),
       JoinPathSegments(admin_home, "ranger-admin-site.xml")));
@@ -160,6 +162,10 @@ Status MiniRanger::DbSetup(const string& admin_home, const string& ews_dir,
 
 Status MiniRanger::StartRanger() {
   bool fresh_install;
+  if (!mini_pg_->IsStarted()) {
+    return Status::IllegalState("Postgres is not running");
+  }
+
   LOG_TIMING(INFO, "starting Ranger") {
     LOG(INFO) << "Starting Ranger...";
     string exe;
@@ -326,10 +332,16 @@ Status MiniRanger::AddPolicy(AuthorizationPolicy policy) {
   return Status::OK();
 }
 
-Status MiniRanger::PostToRanger(string url, EasyJson payload) {
+Status MiniRanger::PostToRanger(const string& url, const EasyJson& payload, bool secure) {
+  EasyCurl curl;
+  if (secure) {
+    curl.set_auth(CurlAuthType::SPNEGO);
+  } else {
+    curl.set_auth(CurlAuthType::BASIC, "admin", "admin");
+  }
   faststring result;
-  RETURN_NOT_OK_PREPEND(curl_.PostToURL(JoinPathSegments(ranger_admin_url_, std::move(url)),
-                                        std::move(payload.ToString()), &result,
+  RETURN_NOT_OK_PREPEND(curl.PostToURL(JoinPathSegments(ranger_admin_url_, url),
+                                        payload.ToString(), &result,
                                         {"Content-Type: application/json"}),
                         Substitute("Error received from Ranger: $0", result.ToString()));
   return Status::OK();
