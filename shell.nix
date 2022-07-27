@@ -3,7 +3,7 @@ let
     sources = import ./nix/sources.nix;
     pkgs = import sources.nixpkgs {};
     frameworks = pkgs.darwin.apple_sdk.frameworks;
-in pkgs.stdenv.mkDerivation {
+in pkgs.mkShell {
   name = "kudu-env";
   buildInputs = [
     pkgs.autoconf
@@ -12,7 +12,6 @@ in pkgs.stdenv.mkDerivation {
     pkgs.curl
     pkgs.cyrus_sasl
     pkgs.flex
-    pkgs.gcc
     pkgs.gdb
     pkgs.git
     pkgs.glog
