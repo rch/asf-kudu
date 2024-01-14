@@ -32,6 +32,10 @@ oprofile_data
 *.iml
 README.html
 
+# nix / direnv
+.env
+.direnv/
+
 # macOS-specific cruft
 .DS_Store
 
