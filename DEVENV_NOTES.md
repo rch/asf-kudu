@@ -68,10 +68,10 @@ After applying this fix:
 
 ### Compatibility
 
-- ✅ Works with OpenSSL 3.5+ (stricter validation)
-- ✅ Works with OpenSSL 3.0-3.4 (existing validation)
-- ✅ Works with OpenSSL 1.x (backward compatible)
-- ✅ No behavioral changes for valid CSRs
+- Works with OpenSSL 3.5+ (stricter validation)
+- Works with OpenSSL 3.0-3.4 (existing validation)
+- Works with OpenSSL 1.x (backward compatible)
+- No behavioral changes for valid CSRs
 
 This fix should be upstreamed to the main Kudu repository as a follow-up to commit `cd9e59ebd` (OpenSSL 3.x compatibility adaptation).
 
@@ -114,10 +114,10 @@ devenv tasks run kudu:build-release
 ```
 
 The RELEASE build:
-- ✅ Starts successfully without segfaults
-- ✅ Initializes all services (CA, TSK, tablet servers)
-- ✅ Provides production-like performance
-- ✅ Still includes debug symbols (via `-g` flag)
+- Starts successfully without segfaults
+- Initializes all services (CA, TSK, tablet servers)
+- Provides production-like performance
+- Still includes debug symbols (via `-g` flag)
 
 #### Using RELEASE Build with devenv
 
@@ -236,26 +236,6 @@ By default, Kudu's web UI binds to `127.0.0.1` (localhost only). To access the U
 ```bash
 devenv tasks run kudu:full-release
 ln -sf "$(pwd)/build/release" build/latest
-```
-
-### Issue: "Cannot bind to address" errors
-
-**Symptom**: Web UI or RPC fails to bind to configured ports
-
-**Solution**: Check for existing Kudu processes:
-```bash
-pkill -f "kudu-master|kudu-tserver"
-sleep 2
-# Then restart cluster
-```
-
-### Issue: Data loss after reboot
-
-**Symptom**: Cluster data disappears after system restart
-
-**Solution**: Set persistent `CLUSTER_DIR` in `.env`:
-```bash
-CLUSTER_DIR=/path/to/persistent/storage
 ```
 
 ---
