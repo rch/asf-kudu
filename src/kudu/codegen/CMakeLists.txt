@@ -85,6 +85,15 @@ if (APPLE)
   # location so that the CLANG from the Kudu's third-party can pick them up.
   set(PREFIXED_IR_INCLUDES ${PREFIXED_IR_INCLUDES}
     -isystem ${CMAKE_OSX_SYSROOT}/usr/include)
+else()
+  # On Linux, also add the C++ standard library headers
+  if (${KUDU_USE_TSAN})
+    set(PREFIXED_IR_INCLUDES ${PREFIXED_IR_INCLUDES}
+      -isystem "${THIRDPARTY_INSTALL_TSAN_DIR}/include/c++/v1")
+  else()
+    set(PREFIXED_IR_INCLUDES ${PREFIXED_IR_INCLUDES}
+      -isystem "${THIRDPARTY_INSTALL_UNINSTRUMENTED_DIR}/include/c++/v1")
+  endif()
 endif()
 
 if (${KUDU_USE_TSAN})

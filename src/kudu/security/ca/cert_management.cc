@@ -90,6 +90,11 @@ Status CertRequestGeneratorBase::GenerateRequest(const PrivateKey& key,
   // Set necessary extensions into the request.
   RETURN_NOT_OK(SetExtensions(req.get()));
 
+  // Explicitly set the version to 0 (v1), which is the only valid CSR version per RFC 2986.
+  // OpenSSL 3.5+ is stricter about CSR versions and rejects CSRs with X.509 cert versions.
+  OPENSSL_RET_NOT_OK(X509_REQ_set_version(req.get(), X509_REQ_VERSION_1),
+      "error setting X509 request version");
+
   // And finally sign the result.
   OPENSSL_RET_NOT_OK(X509_REQ_sign(req.get(), key.GetRawData(), EVP_sha256()),
       "error signing X509 request");
