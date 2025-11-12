@@ -152,13 +152,11 @@ devenv tasks run kudu:build-thirdparty
 
 # DEBUG build workflow
 devenv tasks run kudu:configure-debug     # Configure with CMake
-devenv tasks run kudu:build-debug         # Build binaries
-devenv tasks run kudu:full-debug          # Complete: thirdparty + configure + build
+devenv tasks run kudu:build-debug         # Complete: thirdparty + configure + build
 
 # RELEASE build workflow (recommended)
 devenv tasks run kudu:configure-release   # Configure with CMake
-devenv tasks run kudu:build-release       # Build binaries
-devenv tasks run kudu:full-release        # Complete: thirdparty + configure + build
+devenv tasks run kudu:build-release       # Complete: thirdparty + configure + build
 
 # Testing and cleanup
 devenv tasks run kudu:test                # Run tests
