@@ -232,7 +232,7 @@ By default, Kudu's web UI binds to `127.0.0.1` (localhost only). To access the U
 
 **Solution**: Use RELEASE build instead:
 ```bash
-devenv tasks run kudu:full-release
+devenv tasks run kudu:build-release
 ln -sf "$(pwd)/build/release" build/latest
 ```
 
@@ -250,7 +250,7 @@ devenv shell --impure
 devenv tasks run kudu:build-thirdparty
 
 # 3. Configure and build RELEASE version
-devenv tasks run kudu:full-release
+devenv tasks run kudu:build-release
 
 # 4. Set up configuration
 cp .env.example .env
