@@ -1,0 +1,49 @@
+cmake_minimum_required(VERSION 3.14)
+project(caf_official_examples)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Use CAF from Kudu thirdparty
+set(CAF_ROOT "${CMAKE_SOURCE_DIR}/../../thirdparty/installed/uninstrumented")
+
+# Manual library configuration (since find_package might not work)
+set(CAF_INCLUDE_DIRS "${CAF_ROOT}/include")
+set(CAF_LIBRARY_DIR "${CAF_ROOT}/lib")
+
+# Find CAF libraries
+find_library(CAF_CORE_LIB caf_core PATHS ${CAF_LIBRARY_DIR} NO_DEFAULT_PATH REQUIRED)
+find_library(CAF_IO_LIB caf_io PATHS ${CAF_LIBRARY_DIR} NO_DEFAULT_PATH REQUIRED)
+
+message(STATUS "CAF Core: ${CAF_CORE_LIB}")
+message(STATUS "CAF IO: ${CAF_IO_LIB}")
+
+# Example 1: Local message passing with request/response
+add_executable(example1_request request.cpp)
+target_include_directories(example1_request PRIVATE ${CAF_INCLUDE_DIRS})
+target_link_libraries(example1_request
+  ${CAF_CORE_LIB}
+  pthread
+)
+
+# Example 2: Fan-out requests
+add_executable(example2_fan_out fan_out_request.cpp)
+target_include_directories(example2_fan_out PRIVATE ${CAF_INCLUDE_DIRS})
+target_link_libraries(example2_fan_out
+  ${CAF_CORE_LIB}
+  pthread
+)
+
+# Example 3: Distributed calculator (CRITICAL TEST)
+add_executable(example3_distributed_calc distributed_calculator.cpp)
+target_include_directories(example3_distributed_calc PRIVATE ${CAF_INCLUDE_DIRS})
+target_link_libraries(example3_distributed_calc
+  ${CAF_CORE_LIB}
+  ${CAF_IO_LIB}
+  pthread
+)
+
+message(STATUS "CAF Examples configured:")
+message(STATUS "  example1_request - Local message passing")
+message(STATUS "  example2_fan_out - Fan-out requests")
+message(STATUS "  example3_distributed_calc - Distributed calculator (multiprocess)")

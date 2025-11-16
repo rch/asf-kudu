@@ -3,10 +3,10 @@
     "devenv": {
       "locked": {
         "dir": "src/modules",
-        "lastModified": 1762620264,
+        "lastModified": 1763136231,
         "owner": "cachix",
         "repo": "devenv",
-        "rev": "539f28ba832a7cae312abd498d1f97bfe125881b",
+        "rev": "4b8c2bbdb4e01ef8c4093ee1224fe21ed5ea1a5e",
         "type": "github"
       },
       "original": {
@@ -31,18 +31,39 @@
         "type": "github"
       }
     },
-    "gitignore": {
+    "git-hooks": {
       "inputs": {
+        "flake-compat": "flake-compat",
+        "gitignore": "gitignore",
         "nixpkgs": [
-          "pre-commit-hooks",
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1709087332,
+        "lastModified": 1763032142,
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "rev": "84255025dee4c8701a99fbff65ac3c9095952f99",
+        "type": "github"
+      },
+      "original": {
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "type": "github"
+      }
+    },
+    "gitignore": {
+      "inputs": {
+        "nixpkgs": [
+          "git-hooks",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1762808025,
         "owner": "hercules-ci",
         "repo": "gitignore.nix",
-        "rev": "637db329424fd7e46cf4185293b9cc8c88c95394",
+        "rev": "cb5e3fdca1de58ccbc3ef53de65bd372b48f567c",
         "type": "github"
       },
       "original": {
@@ -66,32 +87,14 @@
         "type": "github"
       }
     },
-    "pre-commit-hooks": {
-      "inputs": {
-        "flake-compat": "flake-compat",
-        "gitignore": "gitignore",
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1762441963,
-        "owner": "cachix",
-        "repo": "pre-commit-hooks.nix",
-        "rev": "8e7576e79b88c16d7ee3bbd112c8d90070832885",
-        "type": "github"
-      },
-      "original": {
-        "owner": "cachix",
-        "repo": "pre-commit-hooks.nix",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "devenv": "devenv",
+        "git-hooks": "git-hooks",
         "nixpkgs": "nixpkgs",
-        "pre-commit-hooks": "pre-commit-hooks"
+        "pre-commit-hooks": [
+          "git-hooks"
+        ]
       }
     }
   },

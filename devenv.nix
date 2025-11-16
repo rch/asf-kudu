@@ -5,6 +5,89 @@
 
   # Long-running processes managed by 'devenv up'
   processes = {
+    # Aeron Media Driver (IPC transport for CAF examples)
+    aeron-driver.exec = ''
+      if [ "''${ENABLE_CAF_EXAMPLE:-false}" != "true" ] && [ "''${ENABLE_MANUFACTURING_SIM:-false}" != "true" ]; then
+        echo "Aeron Media Driver disabled (enable CAF examples to start)"
+        sleep infinity
+      fi
+
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║  AERON MEDIA DRIVER - Ultra-Low-Latency IPC Transport       ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo ""
+
+      # Clean up stale Aeron directories from previous runs
+      AERON_DIR="/dev/shm/aeron-$(whoami)"
+      if [ -d "$AERON_DIR" ]; then
+        echo "Cleaning up stale Aeron directory: $AERON_DIR"
+        rm -rf "$AERON_DIR"
+      fi
+
+      echo "Starting Aeron Media Driver..."
+      echo "  IPC Channel: aeron:ipc"
+      echo "  Shared Memory: $AERON_DIR"
+      echo "  Thread Model: Dedicated (ultra-low latency)"
+      echo ""
+      echo "Monitor with:"
+      echo "  ls -lh $AERON_DIR"
+      echo "  cat $AERON_DIR/cnc-stats"
+      echo ""
+      echo "══════════════════════════════════════════════════════════════"
+      echo ""
+
+      # Run Aeron media driver (C++ version from devenv packages)
+      # The driver runs until killed, managing IPC channels in /dev/shm
+      exec aeronmd
+    '';
+
+    # MIT Kerberos KDC (optional - enable with ENABLE_KERBEROS=true)
+    kerberos-kdc.exec = ''
+      if [ "''${ENABLE_KERBEROS:-false}" != "true" ]; then
+        echo "Kerberos KDC disabled (set ENABLE_KERBEROS=true in .env to enable)"
+        sleep infinity
+      fi
+
+      # Initialize Kerberos if needed
+      if [ ! -f .devenv/kerberos/principal ]; then
+        echo "Initializing Kerberos KDC..."
+        ./scripts/kerberos/init-kerberos.sh
+      fi
+
+      # Start KDC
+      echo "Starting Kerberos KDC (port 10088)..."
+      echo "  Realm: ''${FREEIPA_REALM:-VISTA.ZNDX.ORG}"
+      echo "  Config: .devenv/kerberos/kdc.conf"
+      echo ""
+      export KRB5_CONFIG=.devenv/kerberos/krb5.conf
+      export KRB5_KDC_PROFILE=.devenv/kerberos/kdc.conf
+      exec ${pkgs.krb5Full}/bin/krb5kdc -n
+    '';
+
+    # BIND9 DNS Server (optional - enable with ENABLE_BIND_DNS=true)
+    bind-dns.exec = ''
+      if [ "''${ENABLE_BIND_DNS:-false}" != "true" ]; then
+        echo "BIND DNS disabled (set ENABLE_BIND_DNS=true in .env to enable)"
+        sleep infinity
+      fi
+
+      # Initialize BIND if needed
+      if [ ! -f .devenv/bind/named.conf ]; then
+        echo "Initializing BIND DNS..."
+        ./scripts/bind/init-bind.sh
+      fi
+
+      # Start BIND
+      echo "Starting BIND DNS server (port 5353)..."
+      echo "  Domain: ''${FREEIPA_DOMAIN:-vista.zndx.lan}"
+      echo "  Config: .devenv/bind/named.conf"
+      echo ""
+      echo "Query with: dig @127.0.0.1 -p 5353 <hostname>"
+      echo ""
+      exec ${pkgs.bind}/bin/named -f -c .devenv/bind/named.conf -p 5353
+    '';
+
+    # Kudu Cluster
     kudu-cluster.exec = ''
       # Determine which directory to use: build or install
       DIR_ARG=""
@@ -43,10 +126,335 @@
       # Call the devenv-specific wrapper script
       exec src/kudu/scripts/start_kudu_devenv.sh "$DIR_ARG"
     '';
+
+    # Kudu Service (Aeron + Kudu bridge for CAF examples)
+    kudu-service.exec = ''
+      if [ "''${ENABLE_CAF_EXAMPLE:-false}" != "true" ] && [ "''${ENABLE_MANUFACTURING_SIM:-false}" != "true" ]; then
+        echo "Kudu Service disabled (enable CAF examples to start)"
+        sleep infinity
+      fi
+
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║  KUDU SERVICE - Aeron IPC to Kudu Bridge                    ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo ""
+      echo "Waiting for Kudu cluster to be ready..."
+
+      # Wait for Kudu cluster to be fully started (check master port)
+      MASTER_ADDR="''${RPC_IP:-127.0.0.1}:8764"
+      MAX_WAIT=60
+      ELAPSED=0
+
+      while [ $ELAPSED -lt $MAX_WAIT ]; do
+        if nc -z ''${RPC_IP:-127.0.0.1} 8764 2>/dev/null; then
+          echo "✓ Kudu master is listening on port 8764"
+          break
+        fi
+        sleep 1
+        ELAPSED=$((ELAPSED + 1))
+        if [ $((ELAPSED % 10)) -eq 0 ]; then
+          echo "  Still waiting for Kudu master... ($ELAPSED seconds)"
+        fi
+      done
+
+      if [ $ELAPSED -ge $MAX_WAIT ]; then
+        echo "✗ Timeout waiting for Kudu cluster to start"
+        echo "  Make sure the kudu-cluster process is running"
+        sleep infinity
+        exit 1
+      fi
+
+      # Give Kudu cluster a bit more time to fully initialize
+      echo "Waiting for Kudu cluster to fully initialize..."
+      sleep 3
+
+      # Check if executable exists
+      if [ ! -x examples/caf/build/kudu_service_simple ]; then
+        echo "Building kudu_service_simple..."
+        mkdir -p examples/caf/build
+        cd examples/caf/build
+
+        # Use thirdparty cmake if available, otherwise system cmake
+        if [ -f ../../../thirdparty/installed/common/bin/cmake ]; then
+          ../../../thirdparty/installed/common/bin/cmake .. 2>&1 | tail -10
+        else
+          cmake .. 2>&1 | tail -10
+        fi
+
+        if ! make -j$(nproc) kudu_service_simple 2>&1 | tail -10; then
+          echo ""
+          echo "✗ Build failed"
+          echo "To see full build output, run:"
+          echo "  cd examples/caf/build && cmake .. && make kudu_service_simple"
+          sleep infinity
+          exit 1
+        fi
+        cd ../../..
+      fi
+
+      echo "✓ Build complete"
+      echo ""
+
+      # Wait for Aeron driver to be ready
+      echo "Waiting for Aeron media driver..."
+      AERON_DIR="/dev/shm/aeron-$(whoami)"
+      MAX_WAIT=30
+      ELAPSED=0
+
+      while [ $ELAPSED -lt $MAX_WAIT ]; do
+        if [ -d "$AERON_DIR" ] && [ -f "$AERON_DIR/cnc.dat" ]; then
+          echo "✓ Aeron media driver is ready"
+          break
+        fi
+        sleep 1
+        ELAPSED=$((ELAPSED + 1))
+        if [ $((ELAPSED % 5)) -eq 0 ]; then
+          echo "  Still waiting for Aeron... ($ELAPSED seconds)"
+        fi
+      done
+
+      if [ $ELAPSED -ge $MAX_WAIT ]; then
+        echo "✗ Timeout waiting for Aeron media driver"
+        echo "  Make sure the aeron-driver process is running"
+        sleep infinity
+        exit 1
+      fi
+
+      echo ""
+      echo "Starting Kudu Service..."
+      echo "  Master addresses: ''${RPC_IP:-127.0.0.1}:8764"
+      echo "  Aeron IPC channel: aeron:ipc"
+      echo "  Stream ID: 1001"
+      echo ""
+      echo "Architecture:"
+      echo "  CAF Actors → Aeron IPC → Kudu Service → Kudu Cluster"
+      echo ""
+      echo "══════════════════════════════════════════════════════════════"
+      echo ""
+
+      # Run the service (pass master address as positional argument)
+      ./examples/caf/build/kudu_service_simple ''${RPC_IP:-127.0.0.1}:8764
+      EXIT_CODE=$?
+
+      if [ $EXIT_CODE -eq 0 ]; then
+        echo ""
+        echo "✓ Kudu Service exited cleanly"
+      else
+        echo ""
+        echo "✗ Kudu Service failed with exit code $EXIT_CODE"
+      fi
+
+      sleep infinity
+    '';
+
+    # CAF Event Sourcing Example (optional - enable with ENABLE_CAF_EXAMPLE=true)
+    caf-example.exec = ''
+      if [ "''${ENABLE_CAF_EXAMPLE:-false}" != "true" ]; then
+        echo "CAF Event Sourcing Example disabled (set ENABLE_CAF_EXAMPLE=true to enable)"
+        sleep infinity
+      fi
+
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║  EVENT SOURCING TEST - MANUFACTURING FACILITY RECOVERY       ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo ""
+
+      # Wait for Aeron driver to be ready
+      echo "Waiting for Aeron media driver..."
+      AERON_DIR="/dev/shm/aeron-$(whoami)"
+      MAX_WAIT=30
+      ELAPSED=0
+
+      while [ $ELAPSED -lt $MAX_WAIT ]; do
+        if [ -d "$AERON_DIR" ] && [ -f "$AERON_DIR/cnc.dat" ]; then
+          echo "✓ Aeron media driver is ready"
+          break
+        fi
+        sleep 1
+        ELAPSED=$((ELAPSED + 1))
+        if [ $((ELAPSED % 5)) -eq 0 ]; then
+          echo "  Still waiting for Aeron... ($ELAPSED seconds)"
+        fi
+      done
+
+      if [ $ELAPSED -ge $MAX_WAIT ]; then
+        echo "✗ Timeout waiting for Aeron media driver"
+        echo "  Make sure the aeron-driver process is running"
+        sleep infinity
+        exit 1
+      fi
+
+      # Check if executable exists
+      if [ ! -x examples/caf/build/test_event_sourcing ]; then
+        echo "Building test_event_sourcing..."
+        mkdir -p examples/caf/build
+        cd examples/caf/build
+
+        # Use thirdparty cmake if available, otherwise system cmake
+        if [ -f ../../../thirdparty/installed/common/bin/cmake ]; then
+          ../../../thirdparty/installed/common/bin/cmake .. 2>&1 | tail -10
+        else
+          cmake .. 2>&1 | tail -10
+        fi
+
+        if ! make -j$(nproc) test_event_sourcing 2>&1 | tail -10; then
+          echo ""
+          echo "✗ Build failed"
+          echo "To see full build output, run:"
+          echo "  cd examples/caf/build && cmake .. && make test_event_sourcing"
+          sleep infinity
+          exit 1
+        fi
+        cd ../../..
+      fi
+
+      echo "✓ Build complete"
+      echo ""
+      echo "Configuration:"
+      echo "  Entities (machines):     100"
+      echo "  Max parallel recoveries: 10"
+      echo "  Verbose logging:         no"
+      echo "══════════════════════════════════════════════════════════════"
+      echo ""
+      echo "Running event sourcing test continuously for profiling..."
+      echo "  Monitor with: top -p \$(pgrep test_event_sourcing)"
+      echo ""
+
+      # Run continuously for profiling
+      ./examples/caf/build/test_event_sourcing
+
+      EXIT_CODE=$?
+      echo ""
+      if [ $EXIT_CODE -eq 0 ]; then
+        echo "✓ Event Sourcing Test exited cleanly (exit code: 0)"
+      elif [ $EXIT_CODE -eq 130 ]; then
+        echo "✓ Event Sourcing Test stopped by user (Ctrl+C)"
+      else
+        echo "✗ Event Sourcing Test failed with exit code $EXIT_CODE"
+      fi
+
+      # Keep process alive so devenv doesn't restart it
+      echo "Event Sourcing Test: Sleeping (process will restart if devenv reloads)..."
+      sleep infinity
+    '';
+
+    # Manufacturing Event Generator - Continuous simulation for profiling
+    manufacturing-sim = {
+      exec = ''
+        # Only run if enabled
+        if [ "''${ENABLE_MANUFACTURING_SIM:-false}" != "true" ]; then
+          echo "Manufacturing Simulator disabled (set ENABLE_MANUFACTURING_SIM=true to enable)"
+          sleep infinity
+        fi
+
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║  MANUFACTURING FACILITY SIMULATOR                            ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo ""
+
+        # Check if executable exists
+        if [ ! -x examples/caf/build/manufacturing_event_generator ]; then
+          echo "Building manufacturing_event_generator..."
+          mkdir -p examples/caf/build
+          cd examples/caf/build
+
+          # Use thirdparty cmake if available, otherwise system cmake
+          if [ -f ../../../thirdparty/installed/common/bin/cmake ]; then
+            ../../../thirdparty/installed/common/bin/cmake .. 2>&1 | tail -10
+          else
+            cmake .. 2>&1 | tail -10
+          fi
+
+          if ! make -j$(nproc) manufacturing_event_generator 2>&1 | tail -10; then
+            echo ""
+            echo "✗ Build failed"
+            echo "To see full build output, run:"
+            echo "  cd examples/caf/build && cmake .. && make manufacturing_event_generator"
+            sleep infinity
+            exit 1
+          fi
+          cd ../../..
+        fi
+
+        echo "✓ Build complete"
+        echo ""
+
+        # Wait for Aeron driver to be ready
+        echo "Waiting for Aeron media driver..."
+        AERON_DIR="/dev/shm/aeron-$(whoami)"
+        MAX_WAIT=30
+        ELAPSED=0
+
+        while [ $ELAPSED -lt $MAX_WAIT ]; do
+          if [ -d "$AERON_DIR" ] && [ -f "$AERON_DIR/cnc.dat" ]; then
+            echo "✓ Aeron media driver is ready"
+            break
+          fi
+          sleep 1
+          ELAPSED=$((ELAPSED + 1))
+          if [ $((ELAPSED % 5)) -eq 0 ]; then
+            echo "  Still waiting for Aeron... ($ELAPSED seconds)"
+          fi
+        done
+
+        if [ $ELAPSED -ge $MAX_WAIT ]; then
+          echo "✗ Timeout waiting for Aeron media driver"
+          echo "  Make sure the aeron-driver process is running"
+          sleep infinity
+          exit 1
+        fi
+
+        echo ""
+        echo "Starting lights-out manufacturing facility simulation..."
+        echo "  Total machines:        25"
+        echo "  Equipment types:       5"
+        echo ""
+        echo "  Equipment breakdown:"
+        echo "    5 machines: cnc-mill-   (10Hz telemetry)"
+        echo "    5 machines: cnc-lathe-  (10Hz telemetry)"
+        echo "    5 machines: welder-     (5Hz telemetry)"
+        echo "    5 machines: assembly-   (2Hz telemetry)"
+        echo "    5 machines: inspect-    (1Hz telemetry)"
+        echo ""
+        echo "  Features:"
+        echo "    - Realistic telemetry with noise"
+        echo "    - Probabilistic degradation detection"
+        echo "    - Automatic maintenance scheduling"
+        echo "    - FSM state transitions"
+        echo ""
+        echo "Monitor with:"
+        echo "  ps aux | grep manufacturing_event_generator"
+        echo "  top -p \$(pgrep manufacturing_event_generator)"
+        echo ""
+        echo "══════════════════════════════════════════════════════════════"
+        echo ""
+        echo "Running continuously for profiling... Press Ctrl+C to stop."
+        echo ""
+
+        # Run continuously for profiling
+        ./examples/caf/build/manufacturing_event_generator
+        EXIT_CODE=$?
+
+        echo ""
+        if [ $EXIT_CODE -eq 0 ]; then
+          echo "✓ Manufacturing Simulator exited cleanly (exit code: 0)"
+        elif [ $EXIT_CODE -eq 130 ]; then
+          echo "✓ Manufacturing Simulator stopped by user (Ctrl+C)"
+        else
+          echo "✗ Manufacturing Simulator failed with exit code $EXIT_CODE"
+        fi
+        echo ""
+
+        # Keep process alive so devenv doesn't restart it
+        echo "Manufacturing Simulator: Sleeping (process will restart if devenv reloads)..."
+        sleep infinity
+      '';
+    };
   };
 
   packages = with pkgs; [
     # Build tools
+    ansible
     autoconf
     automake
     gnumake
@@ -63,7 +471,9 @@
     # Basic utilities
     curl
     flex
+    gh
     git
+    jq                  # JSON processor (for API queries)
     lsof
     lsb-release
     perl
@@ -74,20 +484,37 @@
     which
     xxd
 
-    # Kerberos
-    krb5
+    # Test support
+    #caf
+    aeron-cpp          # Aeron C++ messaging library for IPC
+    wrangler
+
+    # Kerberos (full package with KDC server tools)
+    krb5Full
 
     # SASL (required for Kudu)
     cyrus_sasl
 
+    # DNS Server (BIND9)
+    bind
+
     # SSL/TLS
-    openssl_3
+    openssl
 
     # Java
     jdk8_headless
 
     # NTP for time synchronization
     ntp
+
+    # Infrastructure as Code (Cloudflare + FreeIPA management)
+    opentofu           # Terraform fork (fully open source)
+    tflint             # Terraform/OpenTofu linter
+    terraform-docs     # Generate Terraform documentation
+    terrascan          # Security scanner for IaC
+
+    # Cloudflare tools
+    cloudflared        # Cloudflare Tunnel client (optional)
 
     # Additional dependencies for docs (optional)
     graphviz
@@ -101,13 +528,14 @@
     CMAKE_PREFIX_PATH = lib.makeSearchPath ":" [
       "${pkgs.cyrus_sasl.dev}"
       "${pkgs.cyrus_sasl.out}"
-      "${pkgs.krb5.dev}"
-      "${pkgs.krb5}"
+      "${pkgs.krb5Full.dev}"
+      "${pkgs.krb5Full}"
+      "${pkgs.aeron-cpp}"
     ];
     # Ensure libraries can be found
     CMAKE_LIBRARY_PATH = lib.makeSearchPath "/lib" [
       "${pkgs.glibc}"
-      "${pkgs.krb5}"
+      "${pkgs.krb5Full}"
       "${pkgs.cyrus_sasl}"
     ];
   };
@@ -141,6 +569,17 @@
     echo "  devenv tasks run kudu:start-cluster     - Start local Kudu cluster"
     echo "  devenv tasks run kudu:stop-cluster      - Stop local cluster"
     echo "  devenv tasks run kudu:cluster-status    - Check cluster health"
+    echo ""
+    echo "Kerberos + DNS (optional services):"
+    echo "  Set ENABLE_KERBEROS=true in .env        - Enable Kerberos KDC"
+    echo "  Set ENABLE_BIND_DNS=true in .env        - Enable BIND DNS server"
+    echo "  export KRB5_CONFIG=\$PWD/.devenv/kerberos/krb5.conf"
+    echo "  dig @127.0.0.1 -p 5353 <hostname>       - Query local DNS (port 5353)"
+    echo ""
+    echo "CAF Event Sourcing Example:"
+    echo "  devenv tasks run kudu:build-caf-example - Build CAF example"
+    echo "  Set ENABLE_CAF_EXAMPLE=true in .env     - Run with 'devenv up'"
+    echo "  ./examples/caf/build/kudu_caf_example   - Run standalone"
   '';
 
   tasks = {
@@ -374,19 +813,29 @@
         USE_BUILD=false
 
         if [ "$HAS_BUILD" = true ] && [ "$HAS_INSTALL" = true ]; then
-          # Both available - prompt user
-          echo "Both local build and installation are available:"
-          echo "  1) Use local build (build/latest)"
-          echo "  2) Use installation ($INSTALL_DIR)"
-          read -p "Choose [1-2] (default: 1): " choice
-          case "$choice" in
-            2)
-              USE_INSTALL=true
-              ;;
-            *)
-              USE_BUILD=true
-              ;;
-          esac
+          # Both available - check environment variable or default to build
+          if [ "$USE_INSTALLED" = "1" ]; then
+            echo "Using installation (USE_INSTALLED=1): $INSTALL_DIR"
+            USE_INSTALL=true
+          elif [ -t 0 ]; then
+            # Interactive terminal - prompt user
+            echo "Both local build and installation are available:"
+            echo "  1) Use local build (build/latest)"
+            echo "  2) Use installation ($INSTALL_DIR)"
+            read -p "Choose [1-2] (default: 1): " choice
+            case "$choice" in
+              2)
+                USE_INSTALL=true
+                ;;
+              *)
+                USE_BUILD=true
+                ;;
+            esac
+          else
+            # Non-interactive - default to build
+            echo "Both local build and installation available, defaulting to build (set USE_INSTALLED=1 for installation)"
+            USE_BUILD=true
+          fi
         elif [ "$HAS_BUILD" = true ]; then
           USE_BUILD=true
         elif [ "$HAS_INSTALL" = true ]; then
@@ -430,9 +879,7 @@
             --num-tservers ''${NUM_TSERVERS:-3} \
             --host ''${RPC_IP:-127.0.0.1} \
             --webhost ''${WEB_IP:-127.0.0.1}"
-          if [ -n "$WEB_ADVERTISED_IP" ]; then
-            START_ARGS="$START_ARGS --webadvertised $WEB_ADVERTISED_IP"
-          fi
+          # Note: --webadvertised flag is not supported by start_kudu.sh
           if [ -n "$EXTRA_MASTER_FLAGS" ]; then
             START_ARGS="$START_ARGS --master-flags \"$EXTRA_MASTER_FLAGS\""
           fi
@@ -449,9 +896,7 @@
             --num-tservers ''${NUM_TSERVERS:-3} \
             --host ''${RPC_IP:-127.0.0.1} \
             --webhost ''${WEB_IP:-127.0.0.1}"
-          if [ -n "$WEB_ADVERTISED_IP" ]; then
-            START_ARGS="$START_ARGS --webadvertised $WEB_ADVERTISED_IP"
-          fi
+          # Note: --webadvertised flag is not supported by start_kudu.sh
           if [ -n "$EXTRA_MASTER_FLAGS" ]; then
             START_ARGS="$START_ARGS --master-flags \"$EXTRA_MASTER_FLAGS\""
           fi
@@ -512,6 +957,68 @@
         echo "To view the master web UI, visit: http://''${WEB_IP:-127.0.0.1}:8765/"
       '';
       description = "Check local Kudu cluster health";
+    };
+
+    # Build CAF event sourcing example
+    "kudu:build-caf-example" = {
+      exec = ''
+        echo "Building CAF event sourcing example..."
+
+        # Ensure thirdparty is built
+        if [ ! -d thirdparty/installed/uninstrumented ]; then
+          echo "Building thirdparty dependencies first..."
+          thirdparty/build-if-necessary.sh
+        fi
+
+        # Ensure Kudu build exists
+        if [ ! -L build/latest ]; then
+          echo "No Kudu build found. Building debug version..."
+          # Run build-debug task logic
+          thirdparty/build-if-necessary.sh
+          mkdir -p build/debug
+          cd build/debug
+          PREFIX_PATH="${pkgs.cyrus_sasl.dev};${pkgs.cyrus_sasl.out};${pkgs.krb5.dev};${pkgs.krb5}"
+          if [ -f ../../thirdparty/installed/common/bin/cmake ]; then
+            ../../thirdparty/installed/common/bin/cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+          else
+            cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+          fi
+          make -j$(nproc)
+          cd ../..
+        fi
+
+        # Build CAF example
+        echo "Configuring CAF example..."
+        mkdir -p examples/caf/build
+        cd examples/caf/build
+
+        # CAF and other dependencies need to be found via CMAKE_PREFIX_PATH
+        # Use thirdparty cmake if available, disable tests by default
+        if [ -f ../../../thirdparty/installed/common/bin/cmake ]; then
+          ../../../thirdparty/installed/common/bin/cmake .. \
+            -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH" \
+            -DBUILD_TESTS=OFF
+        else
+          cmake .. \
+            -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH" \
+            -DBUILD_TESTS=OFF
+        fi
+
+        echo "Building CAF example..."
+        make -j$(nproc) kudu_caf_example
+
+        if [ -x kudu_caf_example ]; then
+          echo ""
+          echo "CAF example built successfully!"
+          echo "Executable: examples/caf/build/kudu_caf_example"
+          echo ""
+          echo "Run with: ./examples/caf/build/kudu_caf_example --help"
+        else
+          echo "Error: Build failed, executable not found"
+          exit 1
+        fi
+      '';
+      description = "Build Kudu CAF event sourcing example";
     };
   };
 }
