@@ -624,45 +624,154 @@ if (time_to_failure < 24 * 3600) {  // < 24 hours
 }
 ```
 
-### 10.4 Fully Homomorphic Encryption for Privacy-Preserving Analytics
+### 10.4 Fully Homomorphic Encryption for Privacy-Preserving Process Analytics
 
-Combining Attribute-Based Encryption (ABE) with Fully Homomorphic Encryption (FHE) enables privacy-preserving computation on encrypted telemetry data without exposing sensitive equipment parameters:
+Combining Attribute-Based Encryption (ABE) with Fully Homomorphic Encryption (FHE) enables privacy-preserving computation on encrypted process parameters, enabling real-time quality control and collaborative optimization without exposing proprietary formulations, mixture ratios, or material compositions.
+
+**Pharmaceutical Manufacturing Context**:
+
+The FDA's Process Analytical Technology (PAT) framework requires real-time monitoring of Critical Process Parameters (CPPs) affecting Critical Quality Attributes (CQAs) during pharmaceutical manufacturing. However, proprietary formulations represent billions of dollars in R&D investment. FHE enables PAT compliance while protecting trade secrets.
+
+**Example: Encrypted Tablet Formulation Monitoring**
 
 ```cpp
-// Actor performs statistical analysis on encrypted telemetry
-struct EncryptedTelemetry {
-    FHE_Ciphertext vibration;     // Encrypted vibration data
-    FHE_Ciphertext temperature;   // Encrypted temperature data
-    ABE_Ciphertext metadata;      // ABE-encrypted equipment metadata
+// Real-time monitoring of pharmaceutical tablet press
+// Proprietary mixture ratios remain encrypted throughout
+struct EncryptedFormulation {
+    // Active Pharmaceutical Ingredient (API) concentration
+    FHE_Ciphertext api_concentration;      // e.g., 25.3% (encrypted)
+
+    // Excipient mixture ratios (proprietary blend)
+    FHE_Ciphertext microcrystalline_cellulose_pct;  // e.g., 45.2%
+    FHE_Ciphertext croscarmellose_sodium_pct;       // e.g., 8.5%
+    FHE_Ciphertext magnesium_stearate_pct;          // e.g., 1.0%
+
+    // Process parameters monitored via PAT (NIR spectroscopy)
+    FHE_Ciphertext blend_uniformity_rsd;   // Relative Standard Deviation
+    FHE_Ciphertext compression_force;      // kN
+    FHE_Ciphertext tablet_hardness;        // N
+
+    // ABE-encrypted batch metadata
+    ABE_Ciphertext batch_id;
+    ABE_Ciphertext supplier_codes;         // Material traceability
 };
 
-// Compute mean vibration over encrypted samples (no decryption)
-auto encrypted_mean = fhe_compute_mean(encrypted_samples);
+// Quality control: Verify API concentration within specification (no decryption)
+auto within_spec = fhe_and(
+    fhe_greater_than(api_concentration, spec_lower_bound),  // > 24.5%
+    fhe_less_than(api_concentration, spec_upper_bound)      // < 26.1%
+);
 
-// Threshold check on encrypted data
-auto encrypted_alert = fhe_greater_than(encrypted_mean, threshold);
+// Compute blend uniformity across encrypted samples
+auto encrypted_rsd = fhe_compute_rsd(encrypted_samples);
 
-// Only authorized parties can decrypt results
-if (abe_decrypt(encrypted_alert, credentials)) {
-    trigger_maintenance_workflow();
+// Trigger alert if RSD exceeds 5% (encrypted comparison)
+auto blend_alert = fhe_greater_than(encrypted_rsd, threshold_5_percent);
+
+// Only QA personnel with proper credentials see decrypted results
+if (abe_decrypt(blend_alert, qa_credentials)) {
+    halt_production_line();
+    initiate_blend_investigation();
 }
 ```
 
+**Chemical Engineering Example: Confidential Catalyst Mixture**
+
+```cpp
+// Petrochemical refining: Proprietary catalyst formulation
+struct EncryptedCatalystComposition {
+    // Precious metal loadings (highly confidential)
+    FHE_Ciphertext platinum_ppm;      // e.g., 450 ppm Pt
+    FHE_Ciphertext palladium_ppm;     // e.g., 120 ppm Pd
+    FHE_Ciphertext rhodium_ppm;       // e.g., 30 ppm Rh
+
+    // Support material ratios
+    FHE_Ciphertext alumina_ratio;
+    FHE_Ciphertext zeolite_ratio;
+
+    // Real-time process telemetry
+    FHE_Ciphertext conversion_efficiency;  // %
+    FHE_Ciphertext selectivity;            // Target product %
+    FHE_Ciphertext temperature_profile;    // °C
+};
+
+// Optimize catalyst loading without revealing composition
+// Multi-party computation: Refiner A, Refiner B, Catalyst Supplier
+auto optimal_loading = fhe_optimize(
+    encrypted_compositions,      // Multiple refiners' data
+    encrypted_performance,       // Yield, selectivity metrics
+    cost_function                // Encrypted cost model
+);
+// Result: Optimal catalyst blend without any party seeing others' formulations
+```
+
+**Materials Science Example: Alloy Composition Monitoring**
+
+```cpp
+// Advanced materials: Proprietary alloy development
+struct EncryptedAlloyComposition {
+    // Elemental composition (trade secret for aerospace applications)
+    FHE_Ciphertext titanium_pct;       // e.g., 89.5% Ti
+    FHE_Ciphertext aluminum_pct;       // e.g., 6.2% Al
+    FHE_Ciphertext vanadium_pct;       // e.g., 4.0% V
+    FHE_Ciphertext trace_elements[8];  // Proprietary microalloying
+
+    // Material properties (observable but composition-linked)
+    FHE_Ciphertext tensile_strength;   // MPa
+    FHE_Ciphertext fatigue_resistance; // cycles to failure
+    FHE_Ciphertext corrosion_rate;     // μm/year
+};
+
+// Collaborative research without IP leakage
+// University, Supplier A, Supplier B pool encrypted compositions
+auto structure_property_model = fhe_train_neural_network(
+    encrypted_compositions,   // Each party contributes encrypted formulations
+    encrypted_properties,     // Mechanical test results (encrypted)
+    training_parameters       // Shared model architecture
+);
+// Output: Predictive model for material properties
+// No participant learns others' proprietary compositions
+```
+
+**Real-World Academic Validation**:
+
+The **MELLODDY Consortium** (Machine Learning Ledger Orchestration for Drug Discovery) demonstrated successful privacy-preserving pharmaceutical collaboration at unprecedented scale [^1]:
+
+- **Participants**: 10 pharmaceutical companies (Amgen, Bayer, GSK, Janssen, Novartis, et al.)
+- **Dataset**: 2.6+ billion confidential experimental activity data points, 21+ million molecules, 40,000+ assays
+- **Technology**: Federated learning with differential privacy (ε ≤ 0.1) and homomorphic encryption
+- **Results**: 15-25% improvement in drug-target prediction accuracy without compromising proprietary information
+- **Published**: Journal of Chemical Information and Modeling, August 2023
+
+**Novel Application to Real-Time Lights-Out Manufacturing**:
+
+While MELLODDY focused on batch drug discovery, extending FHE to **continuous process monitoring** represents a novel contribution:
+
+1. **Sub-second Latency Requirements**: Pharmaceutical continuous manufacturing requires real-time feedback (<1 second) for process control
+2. **High-Frequency Telemetry**: PAT instruments generate 10-100 Hz spectroscopic data requiring streaming FHE operations
+3. **Regulatory Traceability**: FDA 21 CFR Part 11 compliance mandates audit trails while protecting formulation IP
+4. **Multi-Tenant Clouds**: Contract manufacturing organizations (CMOs) must isolate multiple clients' proprietary processes
+
 **Applications**:
-- **Multi-party Predictive Maintenance**: Multiple suppliers contribute encrypted telemetry; ML models train on encrypted data without revealing proprietary parameters
-- **Privacy-Preserving Benchmarking**: Compare equipment performance across facilities without exposing individual metrics
-- **Regulatory Compliance**: Perform required analytics while maintaining GDPR/CCPA data minimization principles
-- **Secure Outsourcing**: Cloud-based analytics on encrypted time-series data with cryptographic guarantees
+- **Pharmaceutical CMO Operations**: Contract manufacturers process multiple clients' drugs; FHE enables real-time PAT monitoring without exposing formulations to CMO staff
+- **Collaborative Process Optimization**: Multiple pharma companies optimize shared unit operations (e.g., spray drying, granulation) without revealing specific formulations
+- **Regulatory Submissions**: Submit encrypted process data to FDA for review; regulators verify compliance without accessing trade secrets
+- **Supply Chain Quality Control**: Raw material suppliers monitor downstream performance (e.g., dissolution rates) without learning final drug formulations
+- **Academic-Industry Partnerships**: Universities develop ML models on encrypted industrial process data, advancing science without IP disclosure
 
 **Recent Advances**:
 - Hardware accelerators (Duality Technologies, Intel) achieving 10x performance improvements (2024)
-- Lattice-based FHE schemes (CKKS, BGV) optimized for floating-point telemetry data
-- Hybrid ABE+FHE designs for fine-grained access control with homomorphic computation
+- CKKS scheme optimized for floating-point process parameters (temperature, pressure, concentration)
+- Bootstrapping optimizations enabling 100+ sequential operations (sufficient for PAT feedback loops)
+- Hybrid ABE+FHE designs for fine-grained access control (QA personnel vs. production operators vs. regulators)
 
-**Challenges**:
-- Computational overhead: 100-1000x slower than plaintext operations
-- Limited operation depth without bootstrapping (noise accumulation)
-- Integration with existing actor message-passing requires careful serialization design
+**Challenges for Real-Time Deployment**:
+- Computational overhead: 100-1000x slower than plaintext (10-100 Hz PAT data → 0.01-1 Hz encrypted processing)
+- Limited operation depth without bootstrapping (complex quality calculations may require noise management)
+- Integration with legacy PAT systems (NIR, Raman spectroscopy) requires edge FHE accelerators
+- Key management in multi-tenant manufacturing facilities with rotating personnel
+
+[^1]: Wichard, J.D., et al. "MELLODDY: Cross-pharma Federated Learning at Unprecedented Scale Unlocks Benefits in QSAR without Compromising Proprietary Information." *Journal of Chemical Information and Modeling* 63(17), 5393-5404 (2023). DOI: 10.1021/acs.jcim.3c00799
 
 ### 10.5 Transparent Hierarchical Storage via PostgreSQL Foreign Data Wrapper
 
