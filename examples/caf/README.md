@@ -123,22 +123,22 @@ Our implementation follows the Command Query Responsibility Segregation (CQRS) p
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant Actor
-    participant State
-    participant Aeron
-    participant Kudu
+    participant Sim as Equipment Simulator
+    participant EHA as Equipment Health Actor
+    participant St as Actor State
+    participant AB as Aeron Bridge
+    participant KS as Kudu Service
 
-    Client->>Actor: ReportTelemetry(vibration, temp, ...)
-    Actor->>Actor: Validate command
-    Actor->>State: Create TelemetryReported event
-    State->>State: Increment sequence number
-    Actor->>State: Apply event (update FSM)
-    Actor->>Aeron: Persist event (async)
-    Aeron->>Kudu: Write to equipment_events table
-    Actor-->>Client: ACK (optimistic)
+    Sim->>EHA: ReportTelemetry(vibration, temp, ...)
+    EHA->>EHA: Validate command
+    EHA->>St: Create TelemetryReported event
+    St->>St: Increment sequence number
+    EHA->>St: Apply event (update FSM)
+    EHA->>AB: Persist event (async)
+    AB->>KS: Write to equipment_events table
+    EHA-->>Sim: ACK (optimistic)
 
-    Note over Actor,State: State updated immediately<br/>Persistence happens asynchronously
+    Note over EHA,St: State updated immediately<br/>Persistence happens asynchronously
 ```
 
 **Determinism**: The same sequence of events always produces the same final state, enabling reliable replay and recovery.
@@ -186,19 +186,19 @@ Traditional snapshot mechanisms pause the actor to ensure consistency. Our imple
 
 ```mermaid
 sequenceDiagram
-    participant Actor
-    participant State
-    participant Serializer
-    participant Aeron
-    participant Kudu
+    participant EHA as Equipment Actor
+    participant St as Actor State
+    participant Ser as Serializer
+    participant AB as Aeron Bridge
+    participant KS as Kudu Service
 
-    Note over Actor: Processing continues
-    Actor->>State: Update snapshot metadata
-    State->>Serializer: Serialize current state (copy)
-    Note over Actor: Actor continues processing<br/>while serialization occurs
-    Serializer->>Aeron: Send snapshot (async)
-    Aeron->>Kudu: Insert into equipment_snapshots
-    Note over Actor: No pause occurred
+    Note over EHA: Processing continues
+    EHA->>St: Update snapshot metadata
+    St->>Ser: Serialize current state (copy)
+    Note over EHA: Actor continues processing<br/>while serialization occurs
+    Ser->>AB: Send snapshot (async)
+    AB->>KS: Insert into equipment_snapshots
+    Note over EHA: No pause occurred
 ```
 
 **Implementation**:
@@ -227,32 +227,32 @@ Recovery performance is critical for minimizing downtime. We leverage Kudu's par
 
 ```mermaid
 sequenceDiagram
-    participant Coord as Recovery Coordinator
-    participant Actor as Entity Actor
-    participant Kudu as Kudu Service
+    participant RC as Recovery Coordinator
+    participant EA as Entity Actor
+    participant KS as Kudu Service
 
-    Note over Coord: Recovery batch: 10 entities
+    Note over RC: Recovery batch: 10 entities
 
     par Entity 1
-        Coord->>Kudu: Query latest snapshot
-        Kudu-->>Coord: Snapshot (seq=N)
-        Coord->>Actor: Load snapshot
-        Coord->>Kudu: Query events since N
-        Kudu-->>Coord: Events [N+1...M]
-        Coord->>Actor: Replay events
-        Actor->>Actor: Apply events (deterministic)
+        RC->>KS: Query latest snapshot
+        KS-->>RC: Snapshot (seq=N)
+        RC->>EA: Load snapshot
+        RC->>KS: Query events since N
+        KS-->>RC: Events [N+1...M]
+        RC->>EA: Replay events
+        EA->>EA: Apply events (deterministic)
     and Entity 2
-        Coord->>Kudu: Query latest snapshot
-        Kudu-->>Coord: Snapshot
-        Coord->>Actor: Load snapshot
-        Coord->>Kudu: Query events
-        Kudu-->>Coord: Events
-        Coord->>Actor: Replay events
+        RC->>KS: Query latest snapshot
+        KS-->>RC: Snapshot
+        RC->>EA: Load snapshot
+        RC->>KS: Query events
+        KS-->>RC: Events
+        RC->>EA: Replay events
     and Entity 3-10
-        Note over Coord,Kudu: Parallel recovery continues...
+        Note over RC,KS: Parallel recovery continues...
     end
 
-    Note over Coord: All entities recovered<br/>Total time: 23ms for 100 entities
+    Note over RC: All entities recovered<br/>Total time: 23ms for 100 entities
 ```
 
 **Recovery Phases**:
