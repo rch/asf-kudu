@@ -11,69 +11,53 @@ This document describes fixes and improvements made to support Apache Kudu devel
 
 ## OpenSSL 3.x Compatibility Fix
 
-### Issue
+### Status: ✅ MERGED UPSTREAM (KUDU-3716)
 
-When building Kudu with OpenSSL 3.5+ (as provided by recent Nix versions), the master server crashes during initialization with the following error:
+**Upstream Commit**: `879a8f9e2` - "KUDU-3716 Add version to IPKI CA CSR"
+**Merged**: November 2025
+**Resolution**: The fix has been merged from upstream/master and is now part of this branch.
+
+### Original Issue
+
+When building Kudu with OpenSSL 3.4+ (as provided by recent Nix versions), the master server would crash during initialization with the following error:
 
 ```
-F20251110 03:04:01.522497 3467348 catalog_manager.cc:1476] Initializing Kudu internal certificate authority failed:
 Runtime error: CSR signature verification error: error:05800091:x509 certificate routines::unsupported version:
 crypto/x509/x_all.c:47:X509_REQ_verify_ex
 ```
 
 ### Root Cause
 
-OpenSSL 3.5+ became stricter about enforcing RFC 2986, which defines only **CSR version v1 (value 0)** as valid. Kudu's existing OpenSSL 3.x compatibility patches (commit `cd9e59ebd`) did not cover the Certificate Signing Request (CSR) generation code in `cert_management.cc`.
+OpenSSL 3.4+ became stricter about enforcing RFC 2986 CSR version validation. The Certificate Signing Request (CSR) generation code in `cert_management.cc` did not explicitly set the CSR version, causing validation failures.
 
-When CSRs have extensions (as Kudu's CSRs do), OpenSSL may implicitly set an incorrect version. The failure occurs in `X509_REQ_verify()` when the CSR version doesn't match OpenSSL 3.5+'s stricter validation.
+### Upstream Solution
 
-### Solution
+The fix was contributed by Attila Bukor and merged into Apache Kudu master branch. The implementation:
 
 **File**: `src/kudu/security/ca/cert_management.cc`
-**Location**: Lines 93-96 in `CertRequestGeneratorBase::GenerateRequest()`
-
-Add explicit CSR version setting immediately before signing the request:
+**Lines**: 87-94 in `CertRequestGeneratorBase::GenerateRequest()`
 
 ```cpp
-  // Set necessary extensions into the request.
-  RETURN_NOT_OK(SetExtensions(req.get()));
-
-  // Explicitly set the version to 0 (v1), which is the only valid CSR version per RFC 2986.
-  // OpenSSL 3.5+ is stricter about CSR versions and rejects CSRs with X.509 cert versions.
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  // Set the request version explicitly to make sure newer OpenSSL versions can
+  // handle it.
+  //
+  // https://github.com/openssl/openssl/pull/24677/
   OPENSSL_RET_NOT_OK(X509_REQ_set_version(req.get(), X509_REQ_VERSION_1),
-      "error setting X509 request version");
-
-  // And finally sign the result.
-  OPENSSL_RET_NOT_OK(X509_REQ_sign(req.get(), key.GetRawData(), EVP_sha256()),
-      "error signing X509 request");
+      "error setting X509 version");
+#endif
 ```
-
-### Verification
-
-After applying this fix:
-
-1. Certificate authority initializes successfully:
-   ```
-   I20251110 04:44:46.260093 catalog_manager.cc:1505] Initializing Kudu internal certificate authority...
-   I20251110 04:44:46.339386 catalog_manager.cc:1380] Generated new certificate authority record
-   ```
-
-2. Token signing keys load without errors:
-   ```
-   I20251110 04:44:46.339419 catalog_manager.cc:1514] Loading token signing keys...
-   I20251110 04:44:46.404021 catalog_manager.cc:6022] Generated new TSK 0
-   ```
-
-3. Cluster starts successfully with all services operational
 
 ### Compatibility
 
-- Works with OpenSSL 3.5+ (stricter validation)
-- Works with OpenSSL 3.0-3.4 (existing validation)
-- Works with OpenSSL 1.x (backward compatible)
-- No behavioral changes for valid CSRs
+- ✅ Works with OpenSSL 3.4+ (stricter validation)
+- ✅ Works with OpenSSL 3.0-3.3 (existing validation)
+- ✅ Works with OpenSSL 1.x (backward compatible via version guard)
+- ✅ No behavioral changes for valid CSRs
 
-This fix should be upstreamed to the main Kudu repository as a follow-up to commit `cd9e59ebd` (OpenSSL 3.x compatibility adaptation).
+### Historical Note
+
+This issue was initially discovered and patched locally during devenv development work. The upstream fix uses a more robust approach with OpenSSL version guards (`#if OPENSSL_VERSION_NUMBER >= 0x30000000L`) to ensure compatibility across all OpenSSL versions.
 
 ---
 
