@@ -61,6 +61,111 @@ This issue was initially discovered and patched locally during devenv developmen
 
 ---
 
+## LLVM/Terminfo Configuration Fix (November 2025)
+
+### Issue
+
+After merging upstream/master changes, CMake configuration would fail with:
+
+```
+CMake Error at /usr/lib/llvm-14/lib/cmake/llvm/LLVMExports.cmake:68 (set_target_properties):
+  The link interface of target "LLVMSupport" contains:
+
+    Terminfo::terminfo
+
+  but the target was not found.
+```
+
+### Root Cause
+
+System LLVM 14 was being used instead of Kudu's thirdparty LLVM 11.0.0. System LLVM required terminfo libraries that weren't available in the devenv environment.
+
+### Solution
+
+Explicitly configure CMake to use thirdparty LLVM by setting `-DLLVM_DIR`:
+
+**File**: `devenv.nix` (lines 605-613, 660-668, 632-640, 696-704)
+
+All CMake configuration tasks now include:
+```bash
+LLVM_CMAKE_DIR="$(pwd)/../../thirdparty/installed/uninstrumented/lib/cmake/llvm"
+cmake -DCMAKE_BUILD_TYPE=<type> -DLLVM_DIR="$LLVM_CMAKE_DIR" ../..
+```
+
+This ensures Kudu's codegen module uses the bundled LLVM 11.0.0 which has all required dependencies.
+
+---
+
+## DEV_INSTALL_DIR Environment Separation (November 2025)
+
+### Issue
+
+The `DESTDIR` environment variable was polluting thirdparty builds, causing dependencies to be installed to incorrect paths like:
+```
+/home/user/local/bin/kudu/home/user/src/kudu/thirdparty/installed/uninstrumented/
+```
+
+This happened because thirdparty's `make install` commands respected the `DESTDIR` variable from `.env`.
+
+### Root Cause
+
+`DESTDIR` is a standard build system variable that affects **all** `make install` operations:
+- Standard behavior: `DESTDIR=/staging` + `PREFIX=/foo` → installs to `/staging/foo`
+- Kudu's thirdparty build calls `make install` 27 times
+- Setting `DESTDIR` globally polluted all thirdparty installations
+
+### Solution
+
+Introduced `DEV_INSTALL_DIR` as a project-specific variable that only applies to Kudu's final installation:
+
+**Files Modified**:
+- `.env` - Changed `DESTDIR` to `DEV_INSTALL_DIR`
+- `.env.example` - Updated documentation
+- `devenv.nix` - DESTDIR only set at final install point (line 773)
+
+**Configuration** (`.env`):
+```bash
+# DEV_INSTALL_DIR: Development installation directory for 'make install'
+# This is translated to DESTDIR only when running Kudu's 'make install'
+# Can be reused across projects (Kudu, Flink, etc.)
+DEV_INSTALL_DIR=/home/user/local/bin/kudu
+```
+
+**Implementation** (`devenv.nix`, kudu:install task):
+```nix
+INSTALL_DIR="${DEV_INSTALL_DIR/#\~/$HOME}"
+cd build/latest
+make install DESTDIR="$INSTALL_DIR"  # Only place DESTDIR is set
+```
+
+### Benefits
+
+1. ✅ Thirdparty builds isolated from Kudu installation config
+2. ✅ Clean separation without naming conflicts
+3. ✅ Reusable across multiple projects (Kudu, Flink, etc.)
+4. ✅ No environment pollution
+
+---
+
+## Thirdparty Build Notes
+
+### TSAN Build Issues
+
+When building thirdparty dependencies, TSAN (ThreadSanitizer) builds may fail with:
+```
+/nix/store/.../ld: cannot find crtbegin.o: No such file or directory
+```
+
+This is due to circular dependencies with TSAN runtime libraries. For development work, build only the uninstrumented thirdparty:
+
+```bash
+thirdparty/build-thirdparty.sh uninstrumented
+```
+
+For release builds, only `common` and `uninstrumented` targets are needed. TSAN builds are only required when specifically testing with ThreadSanitizer.
+
+---
+
 ## DEBUG vs RELEASE Build Considerations
 
 ### Issue Observed

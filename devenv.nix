@@ -93,8 +93,8 @@
       DIR_ARG=""
       if [ "$USE_INSTALLED" = "1" ] || [ "$USE_INSTALLED" = "true" ]; then
         # User explicitly requested installed version
-        if [ -n "$DESTDIR" ]; then
-          INSTALL_DIR="''${DESTDIR/#\~/$HOME}"
+        if [ -n "$DEV_INSTALL_DIR" ]; then
+          INSTALL_DIR="''${DEV_INSTALL_DIR/#\~/$HOME}"
           if [ -x "$INSTALL_DIR/usr/local/sbin/kudu-master" ]; then
             DIR_ARG="$INSTALL_DIR/usr/local"
           else
@@ -103,15 +103,15 @@
             exit 1
           fi
         else
-          echo "Error: USE_INSTALLED=1 but DESTDIR not set in .env"
+          echo "Error: USE_INSTALLED=1 but DEV_INSTALL_DIR not set in .env"
           exit 1
         fi
       elif [ -L build/latest ] && [ -x build/latest/bin/kudu-master ]; then
         # Use build directory (preferred)
         DIR_ARG="$(cd build/latest && pwd)"
-      elif [ -n "$DESTDIR" ]; then
+      elif [ -n "$DEV_INSTALL_DIR" ]; then
         # Fall back to installation
-        INSTALL_DIR="''${DESTDIR/#\~/$HOME}"
+        INSTALL_DIR="''${DEV_INSTALL_DIR/#\~/$HOME}"
         if [ -x "$INSTALL_DIR/usr/local/sbin/kudu-master" ]; then
           DIR_ARG="$INSTALL_DIR/usr/local"
         fi
@@ -555,7 +555,7 @@
     echo "  devenv up                               - Start Kudu cluster with process manager"
     echo "  USE_INSTALLED=1 devenv up               - Force using installed binaries"
     echo "  devenv tasks run kudu:build-debug       - Build debug version"
-    echo "  devenv tasks run kudu:install           - Install to DESTDIR"
+    echo "  devenv tasks run kudu:install           - Install to DEV_INSTALL_DIR"
     echo ""
     echo "Build tasks:"
     echo "  devenv tasks run kudu:build-debug       - Build debug (auto-configures)"
@@ -602,11 +602,14 @@
         # Set paths for CMake to find dependencies
         PREFIX_PATH="${pkgs.cyrus_sasl.dev};${pkgs.cyrus_sasl.out};${pkgs.krb5.dev};${pkgs.krb5}"
 
+        # Explicitly use thirdparty LLVM (not system LLVM)
+        LLVM_CMAKE_DIR="$(pwd)/../../thirdparty/installed/uninstrumented/lib/cmake/llvm"
+
         # Use thirdparty cmake if available
         if [ -f ../../thirdparty/installed/common/bin/cmake ]; then
-          ../../thirdparty/installed/common/bin/cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+          ../../thirdparty/installed/common/bin/cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" -DLLVM_DIR="$LLVM_CMAKE_DIR" ../..
         else
-          cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+          cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" -DLLVM_DIR="$LLVM_CMAKE_DIR" ../..
         fi
       '';
       description = "Configure Kudu debug build with CMake";
@@ -629,11 +632,14 @@
           # Set paths for CMake to find dependencies
           PREFIX_PATH="${pkgs.cyrus_sasl.dev};${pkgs.cyrus_sasl.out};${pkgs.krb5.dev};${pkgs.krb5}"
 
+          # Explicitly use thirdparty LLVM (not system LLVM)
+          LLVM_CMAKE_DIR="$(pwd)/../../thirdparty/installed/uninstrumented/lib/cmake/llvm"
+
           # Use thirdparty cmake if available
           if [ -f ../../thirdparty/installed/common/bin/cmake ]; then
-            ../../thirdparty/installed/common/bin/cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+            ../../thirdparty/installed/common/bin/cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" -DLLVM_DIR="$LLVM_CMAKE_DIR" ../..
           else
-            cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+            cmake -DCMAKE_BUILD_TYPE=debug -DCMAKE_PREFIX_PATH="$PREFIX_PATH" -DLLVM_DIR="$LLVM_CMAKE_DIR" ../..
           fi
           cd ../..
         fi
@@ -657,11 +663,14 @@
         # Set paths for CMake to find dependencies
         PREFIX_PATH="${pkgs.cyrus_sasl.dev};${pkgs.cyrus_sasl.out};${pkgs.krb5.dev};${pkgs.krb5}"
 
+        # Explicitly use thirdparty LLVM (not system LLVM)
+        LLVM_CMAKE_DIR="$(pwd)/../../thirdparty/installed/uninstrumented/lib/cmake/llvm"
+
         # Use thirdparty cmake if available
         if [ -f ../../thirdparty/installed/common/bin/cmake ]; then
-          ../../thirdparty/installed/common/bin/cmake -DCMAKE_BUILD_TYPE=release -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+          ../../thirdparty/installed/common/bin/cmake -DCMAKE_BUILD_TYPE=release -DCMAKE_PREFIX_PATH="$PREFIX_PATH" -DLLVM_DIR="$LLVM_CMAKE_DIR" ../..
         else
-          cmake -DCMAKE_BUILD_TYPE=release -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+          cmake -DCMAKE_BUILD_TYPE=release -DCMAKE_PREFIX_PATH="$PREFIX_PATH" -DLLVM_DIR="$LLVM_CMAKE_DIR" ../..
         fi
       '';
       description = "Configure Kudu release build with CMake";
@@ -684,11 +693,14 @@
           # Set paths for CMake to find dependencies
           PREFIX_PATH="${pkgs.cyrus_sasl.dev};${pkgs.cyrus_sasl.out};${pkgs.krb5.dev};${pkgs.krb5}"
 
+          # Explicitly use thirdparty LLVM (not system LLVM)
+          LLVM_CMAKE_DIR="$(pwd)/../../thirdparty/installed/uninstrumented/lib/cmake/llvm"
+
           # Use thirdparty cmake if available
           if [ -f ../../thirdparty/installed/common/bin/cmake ]; then
-            ../../thirdparty/installed/common/bin/cmake -DCMAKE_BUILD_TYPE=release -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+            ../../thirdparty/installed/common/bin/cmake -DCMAKE_BUILD_TYPE=release -DCMAKE_PREFIX_PATH="$PREFIX_PATH" -DLLVM_DIR="$LLVM_CMAKE_DIR" ../..
           else
-            cmake -DCMAKE_BUILD_TYPE=release -DCMAKE_PREFIX_PATH="$PREFIX_PATH" ../..
+            cmake -DCMAKE_BUILD_TYPE=release -DCMAKE_PREFIX_PATH="$PREFIX_PATH" -DLLVM_DIR="$LLVM_CMAKE_DIR" ../..
           fi
           cd ../..
         fi
@@ -721,17 +733,17 @@
       description = "Run Kudu tests";
     };
 
-    # Install to DESTDIR
+    # Install to DEV_INSTALL_DIR
     "kudu:install" = {
       exec = ''
-        # Check if DESTDIR is set
-        if [ -z "$DESTDIR" ]; then
-          echo "Error: DESTDIR not set in .env file"
+        # Check if DEV_INSTALL_DIR is set
+        if [ -z "$DEV_INSTALL_DIR" ]; then
+          echo "Error: DEV_INSTALL_DIR not set in .env file"
           exit 1
         fi
 
-        # Expand tilde in DESTDIR
-        INSTALL_DIR="''${DESTDIR/#\~/$HOME}"
+        # Expand tilde in DEV_INSTALL_DIR
+        INSTALL_DIR="''${DEV_INSTALL_DIR/#\~/$HOME}"
 
         echo "Install destination: $INSTALL_DIR"
 
@@ -773,7 +785,7 @@
         echo "Installation complete!"
         echo "Binaries installed to: $INSTALL_DIR"
       '';
-      description = "Install Kudu to DESTDIR (from .env file)";
+      description = "Install Kudu to DEV_INSTALL_DIR (from .env file)";
     };
 
     # Clean build directories
@@ -800,8 +812,8 @@
           HAS_BUILD=true
         fi
 
-        if [ -n "$DESTDIR" ]; then
-          INSTALL_DIR="''${DESTDIR/#\~/$HOME}"
+        if [ -n "$DEV_INSTALL_DIR" ]; then
+          INSTALL_DIR="''${DEV_INSTALL_DIR/#\~/$HOME}"
           # CMake installs to usr/local/sbin
           if [ -x "$INSTALL_DIR/usr/local/sbin/kudu-master" ]; then
             HAS_INSTALL=true
@@ -931,8 +943,8 @@
         KUDU_BIN=""
         if [ -L build/latest ] && [ -x build/latest/bin/kudu ]; then
           KUDU_BIN="build/latest/bin/kudu"
-        elif [ -n "$DESTDIR" ]; then
-          INSTALL_DIR="''${DESTDIR/#\~/$HOME}"
+        elif [ -n "$DEV_INSTALL_DIR" ]; then
+          INSTALL_DIR="''${DEV_INSTALL_DIR/#\~/$HOME}"
           # CMake installs client tool to usr/local/bin
           if [ -x "$INSTALL_DIR/usr/local/bin/kudu" ]; then
             KUDU_BIN="$INSTALL_DIR/usr/local/bin/kudu"
