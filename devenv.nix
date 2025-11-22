@@ -582,6 +582,57 @@
     echo "  ./examples/caf/build/kudu_caf_example   - Run standalone"
   '';
 
+  enterTest = ''
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  KUDU CAF/AERON INTEGRATION TEST SUITE                      ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Ensure CAF example build directory exists
+    if [ ! -d examples/caf/build ]; then
+      echo "ERROR: CAF example build directory not found"
+      echo "Run: devenv tasks run kudu:build-caf-example"
+      exit 1
+    fi
+
+    cd examples/caf/build
+
+    # Check if test executable exists
+    if [ ! -x ./test_event_sourcing ]; then
+      echo "Test executable not found. Building test_event_sourcing..."
+      if ! cmake .. 2>&1 | tail -5; then
+        echo "ERROR: CMake configuration failed"
+        exit 1
+      fi
+      if ! make -j$(nproc) test_event_sourcing 2>&1 | tail -10; then
+        echo "ERROR: Build failed"
+        exit 1
+      fi
+    fi
+
+    echo "Running CAF/Aeron Event Sourcing Integration Test..."
+    echo "──────────────────────────────────────────────────────────────"
+    echo ""
+
+    # Run the test with timeout
+    if ! timeout 30 ./test_event_sourcing; then
+      EXIT_CODE=$?
+      echo ""
+      echo "══════════════════════════════════════════════════════════════"
+      if [ $EXIT_CODE -eq 124 ]; then
+        echo "ERROR: Test timed out after 30 seconds"
+      else
+        echo "ERROR: Test failed with exit code $EXIT_CODE"
+      fi
+      exit $EXIT_CODE
+    fi
+
+    echo ""
+    echo "══════════════════════════════════════════════════════════════"
+    echo "All tests passed successfully"
+    echo "══════════════════════════════════════════════════════════════"
+  '';
+
   tasks = {
     # Build third-party dependencies
     "kudu:build-thirdparty" = {
