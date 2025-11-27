@@ -255,7 +255,7 @@
       fi
 
       echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "║  EVENT SOURCING TEST - MANUFACTURING FACILITY RECOVERY       ║"
+      echo "║  CONTINUOUS CHAOS TESTING - EVENT SOURCING VALIDATION        ║"
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo ""
 
@@ -310,31 +310,45 @@
 
       echo "✓ Build complete"
       echo ""
-      echo "Configuration:"
-      echo "  Entities (machines):     100"
-      echo "  Max parallel recoveries: 10"
-      echo "  Verbose logging:         no"
+
+      # Chaos testing configuration (from environment or defaults)
+      export CHAOS_MODE="''${CHAOS_MODE:-CONTINUOUS}"
+      export USE_MOCK_BRIDGE="''${USE_MOCK_BRIDGE:-false}"
+      export NUM_ACTORS="''${NUM_ACTORS:-100}"
+      export CHAOS_FAILURE_RATE_PER_MIN="''${CHAOS_FAILURE_RATE_PER_MIN:-10}"
+      export CHAOS_DELAY_PROBABILITY="''${CHAOS_DELAY_PROBABILITY:-15}"
+      export METRICS_CONSOLE_INTERVAL_SEC="''${METRICS_CONSOLE_INTERVAL_SEC:-10}"
+
+      echo "Chaos Testing Configuration:"
+      echo "  Mode:                   $CHAOS_MODE"
+      echo "  Bridge:                 $([ "$USE_MOCK_BRIDGE" = "true" ] && echo "MOCK" || echo "REAL (Aeron IPC)")"
+      echo "  Actors:                 $NUM_ACTORS"
+      echo "  Failures per minute:    $CHAOS_FAILURE_RATE_PER_MIN"
+      echo "  Message delay prob:     $CHAOS_DELAY_PROBABILITY%"
+      echo "  Metrics interval:       $METRICS_CONSOLE_INTERVAL_SEC seconds"
       echo "══════════════════════════════════════════════════════════════"
       echo ""
-      echo "Running event sourcing test continuously for profiling..."
+      echo "Running continuous chaos testing..."
+      echo "  Press Ctrl+C to stop"
       echo "  Monitor with: top -p \$(pgrep test_event_sourcing)"
       echo ""
 
-      # Run continuously for profiling
+      # Run continuously with chaos testing
+      # The test will loop internally - no need for shell loop
       ./examples/caf/build/test_event_sourcing
 
       EXIT_CODE=$?
       echo ""
       if [ $EXIT_CODE -eq 0 ]; then
-        echo "✓ Event Sourcing Test exited cleanly (exit code: 0)"
+        echo "✓ Chaos Test exited cleanly (exit code: 0)"
       elif [ $EXIT_CODE -eq 130 ]; then
-        echo "✓ Event Sourcing Test stopped by user (Ctrl+C)"
+        echo "✓ Chaos Test stopped by user (Ctrl+C)"
       else
-        echo "✗ Event Sourcing Test failed with exit code $EXIT_CODE"
+        echo "✗ Chaos Test failed with exit code $EXIT_CODE"
       fi
 
       # Keep process alive so devenv doesn't restart it
-      echo "Event Sourcing Test: Sleeping (process will restart if devenv reloads)..."
+      echo "Chaos Test: Sleeping (process will restart if devenv reloads)..."
       sleep infinity
     '';
 
