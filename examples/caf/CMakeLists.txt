@@ -328,6 +328,7 @@ if(HAVE_AERON)
     event_sourcing.cpp
     equipment_health_actor.cpp
     recovery_coordinator.cpp
+    aeron_ipc_bridge.cpp
   )
   target_include_directories(event_sourcing PRIVATE ${AERON_INCLUDE_DIR})
   target_link_libraries(event_sourcing
