@@ -122,7 +122,8 @@ class MemRowSetCompactionInput : public CompactionOrFlushInput {
   MemRowSetCompactionInput(const MemRowSet& memrowset,
                            const MvccSnapshot& snap,
                            const Schema* projection)
-    : mem_(32*1024),
+    : memrowset_ref_(memrowset.shared_from_this()),
+      mem_(32*1024),
       has_more_blocks_(false) {
     RowIteratorOptions opts;
     opts.projection = projection;
@@ -222,6 +223,11 @@ class MemRowSetCompactionInput : public CompactionOrFlushInput {
 
  private:
   DISALLOW_COPY_AND_ASSIGN(MemRowSetCompactionInput);
+
+  // Keep MemRowSet alive for the duration of the compaction/flush.
+  // This ensures the underlying B-tree and iterator remain valid.
+  shared_ptr<const MemRowSet> memrowset_ref_;
+
   unique_ptr<RowBlock> row_block_;
 
   unique_ptr<MemRowSet::Iterator> iter_;
