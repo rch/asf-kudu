@@ -261,6 +261,22 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
+    // Pre-create event sourcing tables
+    std::cout << "  Creating event sourcing tables..." << std::endl;
+    std::string result = kudu_service.CreateEventsTable("equipment_events");
+    if (result.find("\"status\":\"ok\"") != std::string::npos) {
+      std::cout << "  ✓ equipment_events table ready" << std::endl;
+    } else {
+      std::cout << "  ! equipment_events: " << result << std::endl;
+    }
+
+    result = kudu_service.CreateEventsTable("equipment_snapshots");
+    if (result.find("\"status\":\"ok\"") != std::string::npos) {
+      std::cout << "  ✓ equipment_snapshots table ready" << std::endl;
+    } else {
+      std::cout << "  ! equipment_snapshots: " << result << std::endl;
+    }
+
     // Create Aeron context
     Context ctx;
     std::shared_ptr<Aeron> aeron = Aeron::connect(ctx);
@@ -321,7 +337,17 @@ int main(int argc, char* argv[]) {
           reinterpret_cast<const char*>(buffer.buffer() + offset),
           static_cast<std::size_t>(length));
 
-      std::cout << "Request: " << request << std::endl;
+      // Debug: Only show first 200 chars to avoid spam
+      std::cout << "Request: " << request.substr(0, 200) << (request.length() > 200 ? "..." : "") << std::endl;
+
+      // Extract request_id (CRITICAL for response correlation)
+      std::string request_id = extractField(request, "request_id");
+
+      // Debug: Log request_id extraction for first few requests
+      static int req_count = 0;
+      if (req_count++ < 5) {
+        std::cout << "  Extracted request_id: '" << request_id << "'" << std::endl;
+      }
 
       // Parse operation
       std::string op = extractField(request, "op");
@@ -345,6 +371,23 @@ int main(int argc, char* argv[]) {
         response = kudu_service.ScanEvents(table, entity_id);
       } else {
         response = buildResponse("error", "Unknown operation: " + op);
+      }
+
+      // Inject request_id into response for correlation
+      if (!request_id.empty()) {
+        // Insert request_id after opening brace
+        size_t pos = response.find('{');
+        if (pos != std::string::npos) {
+          response.insert(pos + 1, "\"request_id\":\"" + request_id + "\",");
+
+          // Debug: Log response for first few requests
+          static int resp_count = 0;
+          if (resp_count++ < 5) {
+            std::cout << "  Response with request_id: " << response.substr(0, 200) << std::endl;
+          }
+        }
+      } else {
+        std::cout << "  WARNING: No request_id to inject into response!" << std::endl;
       }
 
       // Send response
