@@ -712,9 +712,9 @@
           cd ../..
         fi
 
-        # Build with progress bar
+        # Build (use plain make - progress wrapper doesn't work in devenv tasks)
         cd build/debug
-        python3 ../../build-support/build_with_progress.py make -j$(nproc)
+        make -j$(nproc)
 
         echo "Debug build complete!"
       '';
@@ -773,9 +773,9 @@
           cd ../..
         fi
 
-        # Build with progress bar
+        # Build (use plain make - progress wrapper doesn't work in devenv tasks)
         cd build/release
-        python3 ../../build-support/build_with_progress.py make -j$(nproc)
+        make -j$(nproc)
 
         echo "Release build complete!"
       '';
