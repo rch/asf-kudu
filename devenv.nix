@@ -594,6 +594,9 @@
     echo "  devenv tasks run kudu:build-caf-example - Build CAF example"
     echo "  Set ENABLE_CAF_EXAMPLE=true in .env     - Run with 'devenv up'"
     echo "  ./examples/caf/build/kudu_caf_example   - Run standalone"
+    echo ""
+    echo "Demo:"
+    echo "  devenv tasks run kudu:demo-cluster      - Clean up and prepare for demo"
   '';
 
   enterTest = ''
@@ -1096,6 +1099,158 @@
         fi
       '';
       description = "Build Kudu CAF event sourcing example";
+    };
+
+    # Demo cleanup - prepare for Cloudera demo
+    "kudu:demo-cluster" = {
+      exec = ''
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║  KUDU DEMO CLUSTER PREPARATION                               ║"
+        echo "║  Cleaning up for Cloudera demonstration                      ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo ""
+
+        # 1. Stop any running devenv processes
+        echo "Step 1: Stopping any running devenv processes..."
+        if pgrep -f "devenv up" > /dev/null 2>&1; then
+          echo "  Found running devenv up processes, stopping..."
+          pkill -f "devenv up" 2>/dev/null || true
+          sleep 2
+        else
+          echo "  No devenv up processes running"
+        fi
+        echo ""
+
+        # 2. Kill any orphaned Kudu processes
+        echo "Step 2: Cleaning up Kudu processes..."
+        KUDU_PROCS=$(pgrep -f "kudu-master|kudu-tserver|kudu_service" 2>/dev/null || true)
+        if [ -n "$KUDU_PROCS" ]; then
+          echo "  Found Kudu processes: $KUDU_PROCS"
+          pkill -f "kudu-master" 2>/dev/null || true
+          pkill -f "kudu-tserver" 2>/dev/null || true
+          pkill -f "kudu_service" 2>/dev/null || true
+          sleep 2
+          # Force kill if still running
+          pkill -9 -f "kudu-master" 2>/dev/null || true
+          pkill -9 -f "kudu-tserver" 2>/dev/null || true
+          pkill -9 -f "kudu_service" 2>/dev/null || true
+          echo "  ✓ Kudu processes terminated"
+        else
+          echo "  No Kudu processes running"
+        fi
+        echo ""
+
+        # 3. Kill CAF example processes
+        echo "Step 3: Cleaning up CAF example processes..."
+        CAF_PROCS=$(pgrep -f "test_event_sourcing|kudu_caf_example|manufacturing_event" 2>/dev/null || true)
+        if [ -n "$CAF_PROCS" ]; then
+          echo "  Found CAF processes: $CAF_PROCS"
+          pkill -f "test_event_sourcing" 2>/dev/null || true
+          pkill -f "kudu_caf_example" 2>/dev/null || true
+          pkill -f "manufacturing_event" 2>/dev/null || true
+          sleep 1
+          echo "  ✓ CAF processes terminated"
+        else
+          echo "  No CAF processes running"
+        fi
+        echo ""
+
+        # 4. Kill Aeron media driver
+        echo "Step 4: Cleaning up Aeron media driver..."
+        AERON_PROCS=$(pgrep -f "aeronmd" 2>/dev/null || true)
+        if [ -n "$AERON_PROCS" ]; then
+          echo "  Found Aeron driver processes: $AERON_PROCS"
+          pkill -f "aeronmd" 2>/dev/null || true
+          sleep 1
+          echo "  ✓ Aeron driver terminated"
+        else
+          echo "  No Aeron driver running"
+        fi
+        echo ""
+
+        # 5. Clean up Aeron shared memory
+        echo "Step 5: Cleaning up Aeron shared memory..."
+        AERON_DIR="/dev/shm/aeron-$(whoami)"
+        if [ -d "$AERON_DIR" ]; then
+          echo "  Removing $AERON_DIR"
+          rm -rf "$AERON_DIR"
+          echo "  ✓ Aeron shared memory cleaned"
+        else
+          echo "  No Aeron shared memory to clean"
+        fi
+        echo ""
+
+        # 6. Clean up Kudu cluster data (optional - controlled by env var)
+        echo "Step 6: Cluster data management..."
+        CLUSTER_DIR_EXPANDED="''${CLUSTER_DIR/#\~/$HOME}"
+        if [ "''${DEMO_CLEAN_DATA:-false}" = "true" ]; then
+          if [ -d "$CLUSTER_DIR_EXPANDED" ]; then
+            echo "  DEMO_CLEAN_DATA=true: Removing cluster data at $CLUSTER_DIR_EXPANDED"
+            rm -rf "$CLUSTER_DIR_EXPANDED"
+            echo "  ✓ Cluster data removed (will start fresh)"
+          fi
+        else
+          echo "  Keeping existing cluster data at $CLUSTER_DIR_EXPANDED"
+          echo "  (Set DEMO_CLEAN_DATA=true to remove)"
+        fi
+        echo ""
+
+        # 7. Verify no processes remain
+        echo "Step 7: Verifying cleanup..."
+        REMAINING=$(pgrep -f "kudu-master|kudu-tserver|aeronmd|test_event_sourcing" 2>/dev/null || true)
+        if [ -n "$REMAINING" ]; then
+          echo "  ⚠ Warning: Some processes still running: $REMAINING"
+          echo "  You may need to manually kill these"
+        else
+          echo "  ✓ All processes cleaned up"
+        fi
+        echo ""
+
+        # 8. Check build readiness
+        echo "Step 8: Checking build readiness..."
+        if [ -L build/latest ] && [ -x build/latest/bin/kudu-master ]; then
+          BUILD_TYPE=$(basename $(readlink build/latest))
+          echo "  ✓ Kudu $BUILD_TYPE build ready at build/latest"
+        else
+          echo "  ⚠ No Kudu build found. Run: devenv tasks run kudu:build-release"
+        fi
+
+        if [ -x examples/caf/build/test_event_sourcing ]; then
+          echo "  ✓ CAF chaos testing example ready"
+        else
+          echo "  ⚠ CAF example not built. Run: devenv tasks run kudu:build-caf-example"
+        fi
+        echo ""
+
+        echo "══════════════════════════════════════════════════════════════"
+        echo ""
+        echo "Demo environment ready!"
+        echo ""
+        echo "To start the demo, run:"
+        echo "  devenv up"
+        echo ""
+        echo "This will start:"
+        echo "  • Aeron media driver (IPC transport)"
+        echo "  • Kudu cluster (master + tablet servers)"
+        echo "  • Kudu service (Aeron-to-Kudu bridge)"
+        echo "  • CAF chaos testing (continuous with RTO/RPO metrics)"
+        echo "  • Manufacturing simulator (optional)"
+        echo ""
+        echo "Demo features:"
+        echo "  • Continuous chaos injection (actor kills, delays)"
+        echo "  • Real-time RTO/RPO measurement"
+        echo "  • Hourly/daily assessment reports"
+        echo "  • Full event sourcing through Kudu"
+        echo ""
+        echo "Configuration (via .env or environment):"
+        echo "  CHAOS_MODE=CONTINUOUS        Run indefinitely"
+        echo "  NUM_ACTORS=100               Number of equipment actors"
+        echo "  CHAOS_FAILURE_RATE_PER_MIN=10  Failures per minute"
+        echo "  METRICS_CONSOLE_INTERVAL_SEC=10  Metrics output interval"
+        echo ""
+        echo "══════════════════════════════════════════════════════════════"
+      '';
+      description = "Clean up and prepare for Cloudera demo";
     };
   };
 }
