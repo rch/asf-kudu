@@ -112,6 +112,7 @@ else
       "ranger-kms")   F_RANGER_KMS=1 ;;
       "rocksdb")      F_ROCKSDB=1 ;;
       "flatbuffers")  F_FLATBUFFERS=1 ;;
+      "caf")          F_CAF=1 ;;
       *)              echo "Unknown module: $arg"; exit 1 ;;
     esac
   done
@@ -450,6 +451,10 @@ fi
 
 if [ -n "$F_UNINSTRUMENTED" -o -n "$F_ROCKSDB" ]; then
   build_rocksdb
+fi
+
+if [ -n "$F_UNINSTRUMENTED" -o -n "$F_CAF" ]; then
+  build_caf
 fi
 
 restore_env

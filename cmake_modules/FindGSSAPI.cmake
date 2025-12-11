@@ -26,8 +26,13 @@
 # Cyrus-SASL) is so commonly used and generally non-ABI-breaking that we should
 # be OK to depend on the host installation.
 
-find_path(GSSAPI_INCLUDE_DIR gssapi/gssapi.h)
-find_library(GSSAPI_SHARED_LIB gssapi_krb5)
+find_path(GSSAPI_INCLUDE_DIR gssapi/gssapi.h
+  HINTS ${CMAKE_PREFIX_PATH}
+  PATH_SUFFIXES include)
+
+find_library(GSSAPI_SHARED_LIB gssapi_krb5
+  HINTS ${CMAKE_PREFIX_PATH}
+  PATH_SUFFIXES lib)
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(GSSAPI

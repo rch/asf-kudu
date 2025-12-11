@@ -20,7 +20,9 @@
 # Note: build output files are not explicitly listed here because they are
 # expected to fall within in the build directory (and indeed, if they're
 # outside for some reason, we want to know as it's likely an error).
+.env
 build/
+docs/notes/
 
 perf.data
 perf.data.old
@@ -64,3 +66,12 @@ cmake-build-*
 
 # Cursor
 .cursor/
+# Devenv
+.devenv*
+devenv.local.nix
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
