@@ -75,11 +75,17 @@ public class ServerInfo {
    * @return a string that contains this server's canonical hostname
    */
   public String getAndCanonicalizeHostname() {
+    String host = hostPort.getHost();
+    // Loopback lab: FQDN in /etc/hosts → 127.0.0.1. Reverse DNS is localhost,
+    // which makes GSSAPI ask for kudu/localhost (not in the KDC). Keep the
+    // configured hostname so SASL uses kudu/<fqdn>.
+    if (local && host != null && !host.isEmpty() && !Character.isDigit(host.charAt(0))) {
+      return host.toLowerCase(Locale.ENGLISH);
+    }
     try {
-      return InetAddress.getByName(
-          hostPort.getHost()).getCanonicalHostName().toLowerCase(Locale.ENGLISH);
+      return InetAddress.getByName(host).getCanonicalHostName().toLowerCase(Locale.ENGLISH);
     } catch (UnknownHostException e) {
-      return hostPort.getHost();
+      return host;
     }
   }
 

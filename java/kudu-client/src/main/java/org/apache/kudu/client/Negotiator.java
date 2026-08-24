@@ -512,16 +512,26 @@ public class Negotiator extends SimpleChannelInboundHandler<CallResponse> {
       }
 
       try {
-        saslClient = Sasl.createSaslClient(new String[]{ clientMech.name() },
-                                           null,
-                                           saslProtocolName,
-                                           remoteHostname,
-                                           props,
-                                           saslCallback);
+        // Create the SASL client inside the Subject so GSSAPI sees the TGT.
+        // evaluateChallenge already uses callAs; createSaslClient on a Netty
+        // thread does not (Java 21 NO_CRED / KUDU-2121).
+        final Map<String, String> saslProps = props;
+        final SaslMechanism mech = clientMech;
+        saslClient = SecurityManagerCompatibility.get().callAs(
+            securityContext.getSubject(),
+            new Callable<SaslClient>() {
+              @Override
+              public SaslClient call() throws Exception {
+                return Sasl.createSaslClient(new String[]{ mech.name() },
+                    null, saslProtocolName, remoteHostname, saslProps, saslCallback);
+              }
+            });
         chosenMech = clientMech;
         break;
-      } catch (SaslException e) {
-        errorsByMech.put(clientMech.name(), e.getMessage());
+      } catch (CompletionException e) {
+        // callAs wraps SaslException (and anything else from createSaslClient).
+        Throwable c = e.getCause() != null ? e.getCause() : e;
+        errorsByMech.put(clientMech.name(), c.getMessage());
       }
     }
 

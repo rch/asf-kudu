@@ -179,8 +179,11 @@ final class ConnectToCluster {
                    "Connecting to each one of them.", hostAndPort.getHost(), inetAddrs);
         }
         for (InetAddress addr : inetAddrs) {
+          // Keep the configured hostname (not addr.getHostAddress()) so GSSAPI
+          // requests kudu/<fqdn> when /etc/hosts maps the FQDN to loopback.
+          // TCP still uses 'addr'. Lab: tinybox.dev.vista.zndx.org → 127.0.0.1.
           masterAddrsWithNames.add(
-              new Pair<>(addr, new HostAndPort(addr.getHostAddress(), hostAndPort.getPort())));
+              new Pair<>(addr, new HostAndPort(hostAndPort.getHost(), hostAndPort.getPort())));
         }
       } else {
         masterAddrsWithNames.add(new Pair<>(null, hostAndPort));
